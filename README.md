@@ -1,6 +1,6 @@
 # BridgeSketch 3D
 
-**Try it online:** [BridgeSketch 3D on GitHub Pages](https://acfakkoh.github.io/BridgeSketch-3D/)
+**Try it online:** [BridgeSketch 3D on GitHub Pages](https://acheruel.github.io/BridgeSketch-3D/)
 
 **A quick visual tool for bridge concepts** · Version 0.6.1 · 10 October 2026 · Anthony Chéruel
 
@@ -33,7 +33,7 @@ BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a
 
 ## Run it
 
-- **Online:** open the [GitHub Pages demo](https://acfakkoh.github.io/BridgeSketch-3D/) in a modern desktop browser with WebGL 2.
+- **Online:** open the [GitHub Pages demo](https://acheruel.github.io/BridgeSketch-3D/) in a modern desktop browser with WebGL 2.
 - **Offline on Windows:** extract the offline archive, double-click `OPEN_OFFLINE.cmd`, keep its PowerShell window open and visit [http://127.0.0.1:5174/](http://127.0.0.1:5174/). Node.js and an internet connection are not needed. Use the localhost address rather than opening `index.html` directly, because browsers block the module loading the app needs from `file://` URLs.
 - **Self-hosting:** see [GITHUB_PAGES.md](docs/GITHUB_PAGES.md).
 - **Sharing:** a link copied from a localhost session opens only where the offline server runs; a Pages link opens anywhere.

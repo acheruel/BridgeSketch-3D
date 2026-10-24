@@ -1,6 +1,6 @@
 # Publish BridgeSketch 3D on GitHub Pages
 
-The GitHub Pages archive contains the static site. The [BridgeSketch 3D repository](https://github.com/ACFakkoh/BridgeSketch-3D) uses these files at the root of `main`; its live address is [ACFakkoh.github.io/BridgeSketch-3D](https://acfakkoh.github.io/BridgeSketch-3D/). Application scripts are grouped in `modules/` and supporting documents in `docs/`. Packaging by itself does not push changes.
+The GitHub Pages archive contains the static site. The [BridgeSketch 3D repository](https://github.com/acheruel/BridgeSketch-3D) uses these files at the root of `main`; its live address is [acheruel.github.io/BridgeSketch-3D](https://acheruel.github.io/BridgeSketch-3D/). Application scripts are grouped in `modules/` and supporting documents in `docs/`. Packaging by itself does not push changes.
 
 1. Extract the archive. Copy its **contents** into your repository root so `index.html`, `modules/`, `docs/`, `vendor/` and `textures/` are at the top level. Include the `.nojekyll` file. When updating a release older than this layout, move its application `.mjs` files into `modules/` and its tracking documents into `docs/`, then replace them with the current files.
 2. Commit these files to your `main` branch and push them to GitHub.
