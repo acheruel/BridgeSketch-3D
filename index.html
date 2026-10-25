@@ -71,7 +71,11 @@
                 <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg
                 ><span class="mi-text"><b>Save</b><small>Download the configuration (.json)</small></span><kbd>Ctrl S</kbd>
               </button>
-              <button id="undo" type="button" role="menuitem" data-action="undo" disabled>
+              <button id="profile-menu" type="button" role="menuitem">
+                <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17c4-1 5-8 9-8s5 5 9 4"/><path d="M3 21h18"/><path d="M7 21v-3M12 21v-9M17 21v-6"/></svg
+                ><span class="mi-text"><b>Road profile…</b><small>Chainage, elevation and X, Y (.csv)</small></span>
+              </button>
+              <button id="undo" type="button" role="menuitem" data-action="undo" class="menu-sep" disabled>
                 <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg
                 ><span class="mi-text"><b>Undo</b><small>Back to the previous state</small></span><kbd>Ctrl Z</kbd>
               </button>
@@ -904,21 +908,6 @@
               <div><span>Min. clearance*</span><strong id="clearance"></strong></div>
               <div><span>Geometry</span><strong id="triangles"></strong></div>
               <p>* Conservative whole-span bound with 200 mm allowance.</p>
-              <section class="profile-summary" aria-labelledby="profileTitle">
-                <h3 id="profileTitle">Road profile · centre line</h3>
-                <div class="profile-fields">
-                  <label>Chainage step (m)<input id="profileStep" inputmode="decimal" value="5" /></label
-                  ><label>Elevation at west axis (m)<input id="profileDatum" inputmode="decimal" value="30,000" /></label>
-                </div>
-                <div class="profile-scroll">
-                  <table id="profileTable">
-                    <thead><tr><th>Chainage</th><th>Elevation</th><th>Point</th></tr></thead>
-                    <tbody></tbody>
-                  </table>
-                </div>
-                <p>Chainage 0 m: west axis, outer face of the west abutment front wall. Top of asphalt at the centre line.</p>
-                <button id="exportProfile" type="button">Export profile CSV</button>
-              </section>
             </div>
           </details>
         </div>
@@ -930,6 +919,34 @@
         <noscript>Enable JavaScript to view bridge concepts.</noscript>
       </section>
     </main>
+    <dialog id="profile-dialog" aria-labelledby="profileTitle">
+      <form method="dialog">
+        <button class="close-dialog" aria-label="Close">×</button>
+        <h2 id="profileTitle">Road profile · centre line</h2>
+        <p>
+          Chainage 0 m: west axis, outer face of the west abutment front wall. Elevation: top of asphalt at the
+          profile grade line. X, Y: plan coordinates of the same points from the reference point and bearing below.
+        </p>
+        <div class="profile-fields">
+          <label>Chainage step (m)<input id="profileStep" inputmode="decimal" value="5" /></label
+          ><label>Elevation at west axis (m)<input id="profileDatum" inputmode="decimal" value="30,000" /></label
+          ><label>X at west axis (m)<input id="profileX" inputmode="decimal" value="0,000" /></label
+          ><label>Y at west axis (m)<input id="profileY" inputmode="decimal" value="0,000" /></label
+          ><label title="Azimuth of the alignment at the west axis, clockwise from north: 90° runs towards +X"
+            >Bearing at west axis (°)<input id="profileBearing" inputmode="decimal" value="90,000"
+          /></label>
+        </div>
+        <div class="profile-scroll">
+          <table id="profileTable">
+            <thead><tr><th>Chainage</th><th>Elevation</th><th>X</th><th>Y</th><th>Point</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="dialog-actions">
+          <button value="close">Close</button><button id="exportProfile" class="primary" type="button">Export CSV</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="about">
       <form method="dialog">
         <button class="close-dialog" aria-label="Close">×</button
@@ -941,6 +958,12 @@
         <p class="hint">
           Starfield and grass species adapted from CK42BB/procedural-stars-threejs and procedural-grass-threejs (MIT);
           physical sky after Tw1ddle/Sky-Shader and the three.js Sky object (MIT).
+        </p>
+        <h3>Version 0.6.3</h3>
+        <p>
+          A redrawn launch screen where the bridge itself fills in as the scene loads, the road profile moved to the
+          File menu with plan coordinates X, Y (reference point and bearing at the west axis) for curved alignments,
+          and summer-green aspen foliage.
         </p>
         <h3>Version 0.6.2</h3>
         <p>

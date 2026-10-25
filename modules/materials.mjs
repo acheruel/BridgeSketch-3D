@@ -359,10 +359,12 @@ diffuseColor.rgb*=mix(1.,.9+.12*dust,painted);`,
   for (const [leaf, tint] of [
     ['oak', '#d5d5cd'],
     ['ash', '#ffffff'],
-    ['aspen', '#dfe6b4'],
+    ['aspen', '#ffffff'],
   ]) {
-    m.leaves[leaf] = prepareLeafMaterial(material(tint, 0.82));
-    m.leavesSnow[leaf] = prepareLeafMaterial(material(tint, 0.82), 'snow');
+    // 0.6.3: the yellow aspen branch is recoloured green in summer and snow (see prepareLeafMaterial).
+    const green = leaf === 'aspen';
+    m.leaves[leaf] = prepareLeafMaterial(material(tint, 0.82), 'summer', { green });
+    m.leavesSnow[leaf] = prepareLeafMaterial(material(tint, 0.82), 'snow', { green });
     m.leavesFall[leaf] = prepareLeafMaterial(material('#ffffff', 0.8), 'fall');
   }
   // Foliage clumps and understory shrubs (0.6.2): dense foliage cards, a touch darker than the twigs (inner crown).

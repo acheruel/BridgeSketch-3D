@@ -1278,23 +1278,30 @@ function driveFrame(dt) {
     '% · Esc to stop';
   needsRender = true;
 }
-// Road profile (0.6.2): chainage / elevation summary in Model info, exported as CSV. The step and the reference
-// elevation are viewer settings, remembered in this browser.
-const profileField = (id, fallback) => {
-  const el = $(id),
-    v = qbParse(el.value);
-  el.setAttribute('aria-invalid', String(!(Number.isFinite(v) && (id !== 'profileStep' || v > 0))));
-  return Number.isFinite(v) && (id !== 'profileStep' || v > 0) ? v : fallback;
+// Road profile (0.6.2): chainage / elevation table, exported as CSV. 0.6.3: moved from Model info to a File menu
+// dialog, with plan coordinates X, Y from a reference point and bearing at the west axis. The settings are viewer
+// preferences, remembered in this browser; the table is only built while the dialog is open.
+const profileInputs = { step: 'profileStep', datum: 'profileDatum', x0: 'profileX', y0: 'profileY', bearing: 'profileBearing' },
+  profileDefaults = { step: 5, datum: 30, x0: 0, y0: 0, bearing: 90 };
+const profileField = key => {
+  const el = $(profileInputs[key]),
+    v = qbParse(el.value),
+    ok = Number.isFinite(v) && (key !== 'step' || v > 0);
+  el.setAttribute('aria-invalid', String(!ok));
+  return ok ? v : profileDefaults[key];
 };
-const profileOptions = () => ({ step: Math.max(0.5, profileField('profileStep', 5)), datum: profileField('profileDatum', 30) });
+const profileOptions = () => {
+  const o = Object.fromEntries(Object.keys(profileInputs).map(k => [k, profileField(k)]));
+  return { ...o, step: Math.max(0.5, o.step), bearing: ((o.bearing % 360) + 360) % 360 };
+};
 function renderProfile() {
-  if (!config) return;
+  if (!config || !$('profile-dialog').open) return;
   const rows = profileTable(config, profileOptions());
   $('profileTable').tBodies[0].replaceChildren(
     ...rows.map(r => {
       const tr = document.createElement('tr');
       if (r.label) tr.className = 'axis';
-      for (const text of [frenchNumber(r.chainage), frenchNumber(r.elevation), r.label || r.part]) {
+      for (const text of [frenchNumber(r.chainage), frenchNumber(r.elevation), frenchNumber(r.x), frenchNumber(r.y), r.label || r.part]) {
         const td = document.createElement('td');
         td.textContent = text;
         tr.append(td);
@@ -1305,19 +1312,32 @@ function renderProfile() {
 }
 try {
   const saved = JSON.parse(localStorage.getItem('bridgesketch-profile-v1') || '{}');
-  if (saved.step) $('profileStep').value = saved.step;
-  if (saved.datum) $('profileDatum').value = saved.datum;
+  for (const [key, id] of Object.entries(profileInputs)) if (saved[key]) $(id).value = saved[key];
 } catch {}
-for (const id of ['profileStep', 'profileDatum'])
+for (const id of Object.values(profileInputs)) {
   $(id).addEventListener('change', () => {
     const options = profileOptions();
-    $('profileStep').value = frenchNumber(options.step).replace(/,?0+$/, '');
-    $('profileDatum').value = frenchNumber(options.datum);
+    for (const [key, el] of Object.entries(profileInputs))
+      $(el).value = key === 'step' ? frenchNumber(options.step).replace(/,?0+$/, '') : frenchNumber(options[key]);
     try {
-      localStorage.setItem('bridgesketch-profile-v1', JSON.stringify({ step: $('profileStep').value, datum: $('profileDatum').value }));
+      localStorage.setItem(
+        'bridgesketch-profile-v1',
+        JSON.stringify(Object.fromEntries(Object.entries(profileInputs).map(([key, el]) => [key, $(el).value]))),
+      );
     } catch {}
     renderProfile();
   });
+  // Enter applies the value instead of submitting (closing) the dialog form.
+  $(id).addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    $(id).dispatchEvent(new Event('change'));
+  });
+}
+$('profile-menu').onclick = () => {
+  $('profile-dialog').showModal();
+  renderProfile();
+};
 $('exportProfile').onclick = () => {
   const options = profileOptions(),
     name = (config.name || 'bridge').replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '') || 'bridge';

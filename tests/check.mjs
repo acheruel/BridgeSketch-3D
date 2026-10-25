@@ -1560,8 +1560,29 @@ for (const folder of ['.', 'modules', 'models', 'vendor', 'textures'])
   assert.equal(frenchNumber(30), '30,000');
   assert.equal(frenchNumber(-1.2345), '-1,234');
   const csv = profileCsv(pc, rows, { step: 5, datum: 30 });
-  assert.ok(csv.startsWith('﻿') && csv.includes('Chainage (m);Elevation (m);Part;Point') && csv.includes('0,000;30,000;Bridge;West axis'));
+  assert.ok(
+    csv.startsWith('﻿') && csv.includes('Chainage (m);Elevation (m);X (m);Y (m);Part;Point') && csv.includes('0,000;30,000;0,000;0,000;Bridge;West axis'),
+  );
   assert.throws(() => profileTable(pc, { step: 0 }));
+  // 0.6.3 plan coordinates: the west axis sits at X0, Y0 and the alignment leaves it on the bearing.
+  const straight = { ...pc, curved: false };
+  for (const r of profileTable(straight)) assert.ok(Math.abs(r.x - r.chainage) < 1e-9 && Math.abs(r.y) < 1e-9, 'Straight, 90°: X = chainage');
+  for (const r of profileTable(straight, { x0: 1000, y0: 5000, bearing: 0 }))
+    assert.ok(Math.abs(r.x - 1000) < 1e-9 && Math.abs(r.y - 5000 - r.chainage) < 1e-9, 'Straight, 0°: towards +Y');
+  for (const r of profileTable(straight, { bearing: 135 }))
+    assert.ok(Math.abs(r.x - r.chainage * Math.SQRT1_2) < 1e-9 && Math.abs(r.y + r.chainage * Math.SQRT1_2) < 1e-9, '135°: south-east');
+  for (const direction of [1, -1]) {
+    const curved = validate({ ...structuredClone(pc), curved: true, radius: 150, direction }),
+      cr = profileTable(curved, { x0: 200, y0: 300, step: 2 }),
+      at0 = cr.find(r => r.chainage === 0),
+      next = cr.find(r => r.chainage === 2);
+    assert.ok(Math.abs(at0.x - 200) < 1e-9 && Math.abs(at0.y - 300) < 1e-9, 'Curved: west axis at X0, Y0');
+    assert.ok(Math.abs(Math.atan2(next.y - at0.y, next.x - at0.x)) < 0.01, 'Curved: leaves on the 90° bearing');
+    const end = cr.findLast(r => r.part === 'Bridge');
+    assert.ok(Math.hypot(end.x - at0.x, end.y - at0.y) < end.chainage - 0.1, 'Curved: chord shorter than the chainage');
+    // direction 1 turns right (towards -Y), direction -1 turns left, as in the plan view.
+    assert.ok(Math.sign(end.y - 300) === -direction, 'Curved: turns to the modelled side');
+  }
 }
 console.log(
   `Checks passed: validation, round trips, 0.6.0 crossfall / diaphragms / screens / railings / roads, skew intersections, continuous boxes, slab soffits, 2H:1V cones, scenery, square columns, traffic and generated scene matrix. Geometry-matrix max ${maxTriangles.toLocaleString()} triangles. Static files ${(bytes / 1e6).toFixed(2)} MB; gzip estimate ${(gzipBytes / 1e6).toFixed(2)} MB.`,

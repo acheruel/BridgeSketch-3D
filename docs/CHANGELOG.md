@@ -1,5 +1,16 @@
 # BridgeSketch 3D
 
+## 0.6.3 — 2026-10-25 — Anthony Chéruel
+
+Source : page Notion « Bridge Sketch 3D version 0.6.3 ».
+
+- Écran de lancement : l'image `intro-bridge.png` est remplacée par un dessin SVG intégré, fidèle à l'original (travées dans les proportions 0,8-1-0,8, poutres à hauteur variable avec une zone de hauteur constante sur les piles, chevêtre étroit, sans cotes de proportion). Le pont sert de barre de chargement : un croquis clair se trace, puis le pont plein se remplit de gauche à droite au rythme du chargement, avec une progression lente entre les étapes. Les transformations sont composées par le GPU, donc l'animation continue pendant la construction de la scène. Le balayage en boucle, qui faisait sortir le dessin de l'écran puis revenir, est supprimé. Mise en page centrée et mise à l'échelle selon la largeur et la hauteur de l'écran. « 3D » est aligné sur la ligne du titre. Un onglet ouvert en arrière-plan commence aussi à charger (délai maximal de 100 ms au lieu d'attendre le premier affichage).
+- Profil en long : déplacé de « Model info » vers le menu File (« Road profile… », dialogue). Ajout des coordonnées en plan X, Y des points, à partir d'un point de référence X0, Y0 à l'axe Ouest et du gisement de l'alignement à cet axe (degrés depuis le nord, sens horaire ; 90° par défaut = vers +X). On distingue ainsi un tracé courbe d'un tracé droit. Points pris sur la ligne de profil (ligne de crête). Colonnes X et Y dans le tableau et le CSV, et ligne de référence en tête du CSV. Les champs acceptent les formules et sont mémorisés dans le navigateur.
+- Arbres : le feuillage des trembles (« Aspen », texture d'origine jaune) est recoloré en vert en été et sous la neige ; l'automne garde sa palette.
+- Hébergement : plus d'exigence hors-ligne, GitHub Pages est la voie principale (README, AGENTS, HANDOFF, GITHUB_PAGES mis à jour). Le lanceur local `OPEN_OFFLINE.cmd` reste disponible.
+- Prototypes (non intégrés) : eau de rivière (d'après web-ocean et Seascape) et ciel atmosphérique (Hillaire 2020 / Bruneton). Comparaison A/B et mesures dans `Claude outputs/prototypes-0.6.3/index.html`, scripts dans `tmp/prototypes/`. Recommandation : intégrer le ciel atmosphérique ; pour l'eau, ne reprendre que quelques éléments.
+- Tests : coordonnées X, Y (tracé droit à 90°, 0° et 135°, tracé courbe dans les deux sens), nouvelles colonnes du CSV.
+
 ## 0.6.2 — 2026-10-16 — Anthony Chéruel
 
 Source : page Notion « Bridge Sketch 3D vers 0.6.2 ».

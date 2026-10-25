@@ -14,9 +14,9 @@ GitHub Pages availability depends on the repository's visibility and your GitHub
 
 Official instructions: [Publishing source](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site) and [Creating a Pages site](https://docs.github.com/en/pages/getting-started-with-github-pages/creating-a-github-pages-site).
 
-## Offline use of this same package
+## Local use of this same package
 
-On Windows, double-click `OPEN_OFFLINE.cmd`. The included PowerShell launcher serves this folder at `http://127.0.0.1:5174/`; keep its window open. No installation or internet connection is needed. Do not open `index.html` directly with `file://`, because browser module restrictions prevent that mode.
+On Windows, double-click `OPEN_OFFLINE.cmd`. The included PowerShell launcher serves this folder at `http://127.0.0.1:5174/`; keep its window open. No installation is needed. Do not open `index.html` directly with `file://`, because browser module restrictions prevent that mode.
 
 The separate offline archive has the same app files under `dist/`. Both packages retain editable parameters through Save/Open JSON. A share link from localhost works only on a computer running the same local server; use your published Pages address when sharing publicly.
 

@@ -2,9 +2,9 @@
 
 **Try it online:** [BridgeSketch 3D on GitHub Pages](https://acheruel.github.io/BridgeSketch-3D/)
 
-**A quick visual tool for bridge concepts** · Version 0.6.1 · 10 October 2026 · Anthony Chéruel
+**A quick visual tool for bridge concepts** · Version 0.6.3 · 25 October 2026 · Anthony Chéruel
 
-BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a span arrangement, deck, supports and site, then inspect the result from above, below or along the obstacle being crossed. It runs entirely from local files, with no account, backend, build step or runtime internet dependency.
+BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a span arrangement, deck, supports and site, then inspect the result from above, below or along the obstacle being crossed. It runs in the browser from static files, with no account, backend or build step.
 
 ![The BridgeSketch 3D workspace with folded parameter groups](screenshots/workspace.webp)
 
@@ -18,6 +18,20 @@ BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a
 - **Parameters:** collapsible sections and formulas in numeric fields, such as `=12*3`.
 - **History:** undo and redo with Ctrl+Z / Ctrl+Y.
 - **Files and export:** save and open JSON, share link, PNG snapshot and GLB export.
+
+## What's new in 0.6.3
+
+- **Launch screen:** the bridge sketch is the loading bar: it fills in from left to right as the scene loads, and no longer slides off screen. The title's "3D" sits on the text line.
+- **Road profile:** moved to **File › Road profile…**, with plan coordinates X, Y from a reference point and bearing at the west axis, so a curved alignment can be told from a straight one. The CSV gains X and Y columns.
+- **Trees:** aspen foliage is green in summer (it kept its autumn yellow).
+- **Hosting:** GitHub Pages is the main way to use the app; offline use is no longer a requirement.
+
+## What's new in 0.6.2
+
+- **Road profile:** chainage / elevation table with CSV export (chainage from the west abutment axis).
+- **Trains:** full-size procedural freight, intercity and commuter trains.
+- **Trees:** fuller crowns, denser groves and understory shrubs.
+- **Fixes:** no cast shadows at night, flush abutment sides, columns meeting tapered caps, faster Reveal structure.
 
 ## What's new in 0.6.1
 
@@ -34,9 +48,9 @@ BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a
 ## Run it
 
 - **Online:** open the [GitHub Pages demo](https://acheruel.github.io/BridgeSketch-3D/) in a modern desktop browser with WebGL 2.
-- **Offline on Windows:** extract the offline archive, double-click `OPEN_OFFLINE.cmd`, keep its PowerShell window open and visit [http://127.0.0.1:5174/](http://127.0.0.1:5174/). Node.js and an internet connection are not needed. Use the localhost address rather than opening `index.html` directly, because browsers block the module loading the app needs from `file://` URLs.
+- **Locally on Windows:** extract the archive, double-click `OPEN_OFFLINE.cmd`, keep its PowerShell window open and visit [http://127.0.0.1:5174/](http://127.0.0.1:5174/). Use the localhost address rather than opening `index.html` directly, because browsers block the module loading the app needs from `file://` URLs. GitHub Pages is the main way to use the app.
 - **Self-hosting:** see [GITHUB_PAGES.md](docs/GITHUB_PAGES.md).
-- **Sharing:** a link copied from a localhost session opens only where the offline server runs; a Pages link opens anywhere.
+- **Sharing:** a link copied from a localhost session opens only where that local server runs; a Pages link opens anywhere.
 
 ## Controls
 

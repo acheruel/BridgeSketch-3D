@@ -139,13 +139,16 @@ export function shrubGeometry() {
 
 // Leaf material: alpha-tested texture, wind sway shared with the meadow, translucent back-lighting.
 // season: 'summer', 'snow' (frosted) or 'fall' (greyscale leaf texture recoloured by the autumn instance colours).
-export function prepareLeafMaterial(material, season = 'summer') {
+// green (0.6.3): the aspen texture is an autumn-yellow branch; outside the fall season its luminance is recoloured
+// to a fresh aspen green.
+export function prepareLeafMaterial(material, season = 'summer', { green = false } = {}) {
   const snow = season === 'snow' || season === true,
     fall = season === 'fall';
+  green &&= !fall;
   material.side = T.DoubleSide;
   material.alphaTest = 0.5;
   material.roughness = 0.82;
-  material.customProgramCacheKey = () => 'bridgesketch-leaves-055' + (snow ? '-snow' : fall ? '-fall' : '');
+  material.customProgramCacheKey = () => 'bridgesketch-leaves-055' + (snow ? '-snow' : fall ? '-fall' : '') + (green ? '-green' : '');
   material.onBeforeCompile = shader => {
     Object.assign(shader.uniforms, grassUniforms);
     shader.vertexShader = shader.vertexShader
@@ -186,7 +189,9 @@ uniform vec3 sunDirection,sunColor;uniform float backlight;varying vec3 vLeafWor
   vec2 texel=vMapUv*512.;
   float lod=max(0.,.5*log2(max(dot(dFdx(texel),dFdx(texel)),dot(dFdy(texel),dFdy(texel)))));
   diffuseColor.a*=1.+lod*.3;
-}${fall ? '\ndiffuseColor.rgb=vec3(dot(diffuseColor.rgb,vec3(.3,.59,.11)))*2.3;' : ''}
+}${fall ? '\ndiffuseColor.rgb=vec3(dot(diffuseColor.rgb,vec3(.3,.59,.11)))*2.3;' : ''}${
+  green ? '\ndiffuseColor.rgb=vec3(dot(diffuseColor.rgb,vec3(.3,.59,.11)))*vec3(.56,.86,.36);' : ''
+}
 #endif`,
       )
       .replace(

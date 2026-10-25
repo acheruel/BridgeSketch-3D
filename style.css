@@ -903,25 +903,32 @@ canvas {
   color: var(--muted);
   margin: 12px 0 0;
 }
-/* Road profile (0.6.2): chainage / elevation table and CSV export. */
 .stats {
   width: 330px;
   max-height: max(220px, calc(100vh - 340px));
   overflow-y: auto;
 }
-.profile-summary {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
+/* Road profile (0.6.2): chainage / elevation table and CSV export. 0.6.3: File menu dialog with X, Y. */
+#profile-dialog {
+  width: min(680px, calc(100vw - 32px));
+  max-width: none;
 }
-.profile-summary h3 {
-  font-size: 0.8rem;
-  font-weight: 650;
-  margin: 0 0 8px;
+#profile-dialog h2 {
+  margin-top: 0;
+}
+.menu-pop .menu-sep {
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
 }
 .profile-fields {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
 }
 .profile-fields label {
@@ -943,7 +950,8 @@ canvas {
   border-color: #c0392b;
 }
 .profile-scroll {
-  max-height: 180px;
+  max-height: min(340px, calc(100vh - 420px));
+  min-height: 120px;
   overflow-y: auto;
   margin-top: 10px;
   border: 1px solid var(--line);
@@ -967,29 +975,13 @@ canvas {
   padding: 3px 6px;
   border-top: 1px solid var(--line);
 }
-#profileTable td:nth-child(-n + 2) {
+#profileTable td:nth-child(-n + 4) {
   text-align: right;
   white-space: nowrap;
 }
 #profileTable tr.axis td {
   font-weight: 600;
   color: #00655f;
-}
-#exportProfile {
-  margin-top: 10px;
-  width: 100%;
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #fff;
-  background: #007f78;
-  border: 0;
-  border-radius: 5px;
-  padding: 8px 10px;
-  cursor: pointer;
-}
-#exportProfile:hover {
-  background: #006a64;
 }
 #feedback {
   position: absolute;
@@ -1283,30 +1275,47 @@ body.focus-mode .workspace {
   margin: 0 0 6px;
 }
 
-/* Launch sequence (intro.mjs) */
+/* Launch sequence (intro.mjs) · 0.6.3: inline drawing, the solid bridge is the loading bar */
 .intro {
   position: fixed; inset: 0; z-index: 100; overflow: hidden; color: #e6f4f8;
   background: radial-gradient(ellipse at 50% 38%, #1d4660, #102d41 55%, #081a27);
-  transition: opacity .25s;
+  transition: opacity .35s;
 }
 .intro.leaving { opacity: 0; pointer-events: none; }
 .intro-grid { position: absolute; inset: 0; background-image: linear-gradient(#73e4c211 1px, transparent 1px), linear-gradient(90deg,#73e4c211 1px,transparent 1px); background-size: 40px 40px; }
-.intro-reveal { position: absolute; top: 18%; left: 50%; width: min(1100px,92vw); margin-left: calc(min(1100px,92vw) / -2); aspect-ratio: 1200 / 420; overflow: hidden; animation: intro-wipe 2s ease-in-out infinite; will-change: transform; }
-.intro-reveal-inner { height: 100%; animation: intro-counter-wipe 2s ease-in-out infinite; will-change: transform; }
-.intro-drawing { display: block; width: 100%; height: 100%; }
-@keyframes intro-wipe { 0% { transform: translateX(-100%); } 65%,85% { transform: translateX(0); } 100% { transform: translateX(100%); } }
-@keyframes intro-counter-wipe { 0% { transform: translateX(100%); } 65%,85% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
-.intro-brand { position: absolute; top: calc(18% + min(420px,35vw)); left: 0; right: 0; text-align: center; }
-.intro-brand h1 { margin: 0; font-size: clamp(30px,4.4vw,54px); font-weight: 300; letter-spacing: .02em; }
+.intro-stage { position: absolute; inset: 0 0 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(4px, 2vh, 24px); padding: 0 16px; }
+.intro-art { position: relative; flex: none; width: min(1100px, 94vw, calc((100vh - 290px) * 1200 / 420)); min-width: 280px; aspect-ratio: 1200 / 420; }
+.intro-art svg { display: block; width: 100%; height: 100%; overflow: hidden; fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.intro-sketch, .intro-fill, .intro-fill-inner { position: absolute; inset: 0; }
+.intro-fill { overflow: hidden; transition: transform 7s cubic-bezier(.08,.75,.12,1); will-change: transform; }
+.intro-fill-inner { transition: inherit; will-change: transform; }
+.intro.complete .intro-fill, .intro.complete .intro-fill-inner { transition-duration: .7s; transition-timing-function: ease-out; }
+.intro-front { position: absolute; top: 24%; bottom: 6%; right: 0; width: 2px; background: linear-gradient(#73e4c200, #b6fff0 30%, #b6fff0 75%, #73e4c200); box-shadow: 0 0 14px 3px #73e4c288; transition: opacity .5s; }
+.intro.complete .intro-front { opacity: 0; }
+.intro-sketch svg { stroke: #73e4c2; stroke-opacity: .32; stroke-width: 1.4; }
+.intro-sketch path { stroke-dasharray: 3000; stroke-dashoffset: 3000; animation: intro-draw 1.6s ease-out forwards; }
+.intro-sketch .ia-pier path, .intro-sketch .ia-thin { animation-delay: .35s; }
+@keyframes intro-draw { to { stroke-dashoffset: 0; } }
+.intro-fill svg { stroke: #b6fff0; stroke-width: 1.8; }
+.intro-fill .ia-deck { fill: #73e4c255; }
+.intro-fill .ia-girder { fill: #73e4c22e; stroke-width: 2.4; }
+.intro-fill .ia-solid { fill: #17435c; }
+.intro-art .ia-far { stroke-opacity: .55; }
+.intro-art .ia-thin { stroke-width: 1; }
+.intro-art .ia-water { stroke: #8fd3ff; }
+.intro-art .ia-dim path { stroke: #9bb9c8; stroke-opacity: .7; stroke-width: 1; stroke-dasharray: none; animation: none; }
+.intro-art text { fill: #9bb9c8; stroke: none; font-size: 15px; font-weight: 600; letter-spacing: .2em; text-anchor: middle; }
+.intro-fill .ia-dim { display: none; }
+.intro-brand { text-align: center; }
+.intro-brand h1 { margin: 0; font-size: clamp(30px,4.4vw,54px); font-weight: 300; letter-spacing: .02em; line-height: 1.2; }
 .intro-brand h1 span { font-weight: 700; color: #73e4c2; }
-.intro-brand h1 em { font-style: normal; font-size: .5em; vertical-align: .55em; padding: 2px 8px; border: 1px solid #73e4c2; border-radius: 6px; color: #73e4c2; }
+.intro-brand h1 em { font-style: normal; font-weight: 400; color: #73e4c2; }
 .intro-brand p { margin: 8px 0 18px; color: #a9c4d1; letter-spacing: .08em; }
 .intro-brand p.intro-author { margin: -10px 0 16px; color: #73e4c2; font-size: 13px; letter-spacing: .16em; }
-.intro-progress { width: 220px; height: 2px; margin: 0 auto 8px; background: #ffffff1c; overflow: hidden; }
-.intro-progress i { display: block; height: 100%; background: #73e4c2; transform-origin: left; transform: scaleX(.04); transition: transform .5s ease; }
 .intro-status { color: #9bb9c8; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
 .intro-skip { position: absolute; right: 22px; bottom: 20px; background: transparent; color: #a9c4d1; border-color: #ffffff33; }
-.intro.reduced .intro-reveal, .intro.reduced .intro-reveal-inner { animation: none; }
+.intro.reduced .intro-sketch path { animation: none; stroke-dashoffset: 0; }
+.intro.reduced .intro-fill, .intro.reduced .intro-fill-inner { transition-duration: .3s; }
 .scene-loading { position: absolute; inset: 0; z-index: 12; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: #102d4166; color: #d6fff0; pointer-events: none; font-size: 13px; }
 .scene-loading img { animation: loading-bridge 1.4s ease-in-out infinite; will-change: transform; }
 @keyframes loading-bridge { 50% { transform: translateY(-6px) rotate(-6deg); } }
