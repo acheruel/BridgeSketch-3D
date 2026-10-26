@@ -31,6 +31,10 @@
   --radius-card: 9px;
   --shadow: 0 2px 7px #15354a08;
   --shadow-pop: 0 6px 12px #0b1e2b1f;
+  /* 0.6.4: top bar a third lower (54 → 36 px). */
+  --topbar-h: 36px;
+  --side-w: 365px;
+  --gap: 14px;
 }
 * {
   box-sizing: border-box;
@@ -88,7 +92,7 @@ button.primary:hover:not(:disabled) {
   border-color: var(--navy-hover);
 }
 .topbar {
-  height: 54px;
+  height: var(--topbar-h);
   background: var(--navy);
   color: #fff;
   display: flex;
@@ -158,11 +162,12 @@ button.primary:hover:not(:disabled) {
   color: #b5cbd6;
 }
 .workspace {
-  height: calc(100dvh - 54px);
+  position: relative;
+  height: calc(100dvh - var(--topbar-h));
   display: grid;
-  grid-template-columns: 365px minmax(0, 1fr);
-  gap: 14px;
-  padding: 14px;
+  grid-template-columns: var(--side-w) minmax(0, 1fr);
+  gap: var(--gap);
+  padding: var(--gap);
   min-height: 470px;
 }
 
@@ -409,32 +414,55 @@ button.primary:hover:not(:disabled) {
   font-size: 0.8125rem;
 }
 
-/* Tabs */
+/* Tabs · 0.6.4: a segmented control, one icon per category (QuickerAtlas view tabs). */
 .input-tabs {
-  display: flex;
-  justify-content: space-between;
-  gap: 2px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--line);
-  border-top: 1px solid var(--line);
-  background: var(--paper);
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 3px;
+  margin: 0 12px 10px;
+  padding: 3px;
+  background: #e2eaf0;
+  border: 1px solid #cdd9e2;
+  border-radius: 10px;
 }
 .input-tabs button {
-  border: 0;
-  border-radius: 0;
-  border-bottom: 2px solid transparent;
-  padding: 11px 5px 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 6px 2px 5px;
   background: none;
-  font-size: 0.83rem;
-  color: var(--muted);
-}
-.input-tabs button:hover:not(:disabled) {
-  background: none;
+  font-size: 0.77rem;
+  font-weight: 600;
+  line-height: 1.1;
   color: var(--ink);
 }
+.input-tabs .tab-ico {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: #4d6a7b;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.input-tabs button:hover:not(:disabled):not([aria-selected='true']) {
+  background: #fff;
+  border-color: #c3d2dc;
+  box-shadow: 0 1px 2px #15354a14;
+}
 .input-tabs [aria-selected='true'] {
-  color: var(--teal);
-  border-bottom-color: var(--teal);
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #fff;
+  box-shadow: 0 1px 3px #00736d55;
+}
+.input-tabs [aria-selected='true'] .tab-ico {
+  stroke: #fff;
 }
 #parameters {
   overflow: auto;
@@ -443,6 +471,7 @@ button.primary:hover:not(:disabled) {
   background: var(--paper);
   scrollbar-width: thin;
   scrollbar-color: #a5becb transparent;
+  border-top: 1px solid var(--line);
 }
 .parameter-panel {
   padding: 14px 16px 16px;
@@ -1048,10 +1077,9 @@ body.focus-mode .workspace {
   grid-template-rows: 1fr;
 }
 @media (max-width: 1250px) {
-  .workspace {
-    grid-template-columns: 330px minmax(0, 1fr);
-    gap: 10px;
-    padding: 10px;
+  :root {
+    --side-w: 330px;
+    --gap: 10px;
   }
   .view-tools {
     top: 110px;
@@ -1069,15 +1097,6 @@ body.focus-mode .workspace {
   }
 }
 @media (max-height: 750px) {
-  .topbar {
-    height: 48px;
-  }
-  .workspace {
-    height: calc(100dvh - 48px);
-  }
-  .brand h1 {
-    font-size: 1.4rem;
-  }
   .panel-heading {
     padding-top: 10px;
   }
@@ -1086,8 +1105,11 @@ body.focus-mode .workspace {
   }
 }
 @media (max-width: 850px) {
+  :root {
+    --side-w: 300px;
+  }
   .workspace {
-    grid-template-columns: 300px minmax(360px, 1fr);
+    grid-template-columns: var(--side-w) minmax(360px, 1fr);
   }
   body {
     min-width: 690px;
@@ -1377,15 +1399,7 @@ body.focus-mode .workspace {
     min-width: 0;
   }
   .topbar {
-    height: 44px;
     padding: 0 12px;
-  }
-  .brand img {
-    width: 32px;
-    height: 32px;
-  }
-  .brand h1 {
-    font-size: 1.2rem;
   }
   .brand small,
   .release-info {
@@ -1509,8 +1523,8 @@ body.focus-mode .workspace {
 }
 
 /* Focus keeps one exit button and gives the scene the whole window. */
-.brand img { width: 34px; height: 34px; }
-.brand h1 { font-size: 1.4rem; }
+.brand img { width: 24px; height: 24px; }
+.brand h1 { font-size: 1.12rem; letter-spacing: -0.4px; white-space: nowrap; }
 .brand small { display: none; }
 body.focus-mode .topbar, body.focus-mode .sidebar, body.focus-mode .view-heading,
 body.focus-mode .view-options, body.focus-mode .export-tools, body.focus-mode .navigation-hint,
@@ -1568,4 +1582,120 @@ dialog code {
   background: #eef5f7;
   padding: 1px 4px;
   border-radius: 3px;
+}
+
+/* 0.6.4 · compact top bar (a third lower), release on one line. */
+.topbar {
+  padding: 0 16px;
+}
+.brand {
+  gap: 9px;
+}
+.brand h1 em {
+  font-size: 0.66rem;
+  padding: 1px 4px;
+}
+@media (min-width: 761px) {
+  .release-info {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 0.8rem;
+  }
+  .release-info small {
+    font-size: 0.72rem;
+  }
+}
+.header-right {
+  gap: 14px;
+}
+.header-right button {
+  padding: 3px 10px;
+  font-size: 0.8rem;
+}
+
+/* 0.6.4 · collapsible parameter panel (QuickerBridge): a round arrow on the panel edge. */
+.panel-toggle {
+  position: absolute;
+  z-index: 6;
+  top: calc(var(--gap) + 16px);
+  left: calc(var(--gap) + var(--side-w) - 14px);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid #cfdde5;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 2px 6px #0b1e2b1f;
+}
+.panel-toggle svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.2s ease-out;
+}
+.panel-toggle:hover:not(:disabled) {
+  background: #eef6f8;
+  color: var(--teal);
+}
+body.panel-collapsed .workspace {
+  grid-template-columns: minmax(0, 1fr);
+  padding-left: 22px;
+}
+body.panel-collapsed .sidebar {
+  display: none;
+}
+body.panel-collapsed .panel-toggle {
+  left: 4px;
+}
+body.panel-collapsed .panel-toggle svg {
+  transform: rotate(180deg);
+}
+body.focus-mode .panel-toggle {
+  display: none;
+}
+@media (max-width: 760px), (max-height: 500px) and (orientation: landscape) {
+  .panel-toggle {
+    display: none;
+  }
+  body.panel-collapsed .sidebar {
+    display: flex;
+  }
+}
+
+/* 0.6.4 · span lengths under the Elevation view (drawn by app.mjs over the canvas). */
+.elevation-dims {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.elevation-dims line {
+  stroke: #17374b;
+  stroke-width: 1;
+}
+.elevation-dims .ext {
+  stroke: #557279;
+  stroke-width: 0.8;
+}
+.elevation-dims .tick {
+  stroke-width: 1.4;
+}
+.elevation-dims text {
+  fill: #17374b;
+  font-size: 12px;
+  font-weight: 600;
+  text-anchor: middle;
+  font-variant-numeric: tabular-nums;
+  paint-order: stroke;
+  stroke: #ffffffd9;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.elevation-dims .total {
+  font-weight: 700;
 }

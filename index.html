@@ -27,6 +27,9 @@
       </div>
     </header>
     <main class="workspace">
+      <button type="button" class="panel-toggle" id="panel-toggle" aria-expanded="true" aria-controls="parameters" aria-label="Collapse the parameters panel" title="Collapse the parameters panel">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
       <aside class="sidebar" aria-label="Bridge parameters">
         <div class="panel-heading">
           <h2>Bridge model <span id="dirty-state" class="dirty-state"></span></h2>
@@ -101,6 +104,7 @@
             ><button id="restore-apply" class="primary" type="button">Restore</button>
           </div>
         </div>
+        <!-- 0.6.4: segmented tabs with an icon each (QuickerAtlas view tabs) -->
         <div class="input-tabs" role="tablist" aria-label="Parameter categories">
           <button
             id="tab-model"
@@ -111,7 +115,7 @@
             tabindex="0"
             data-panel="model"
           >
-            Model</button
+            <svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17 17 3l4 4L7 21z"/><path d="m7 13 2 2m1-5 2 2m1-5 2 2"/></svg><span>Model</span></button
           ><button
             id="tab-deck"
             type="button"
@@ -121,7 +125,7 @@
             tabindex="-1"
             data-panel="deck"
           >
-            Deck</button
+            <svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21 9 3m10 18L15 3"/><path d="M12 5v3m0 4v3m0 4v2"/></svg><span>Deck</span></button
           ><button
             id="tab-structure"
             type="button"
@@ -131,7 +135,7 @@
             tabindex="-1"
             data-panel="structure"
           >
-            Structure</button
+            <svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14M5 20h14M12 4v16"/></svg><span>Structure</span></button
           ><button
             id="tab-supports"
             type="button"
@@ -141,7 +145,7 @@
             tabindex="-1"
             data-panel="supports"
           >
-            Supports</button
+            <svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18"/><path d="M5 4v2.5L9 9h6l4-2.5V4"/><path d="M10 9v11m4-11v11M7 20h10"/></svg><span>Supports</span></button
           ><button
             id="tab-site"
             type="button"
@@ -151,8 +155,7 @@
             tabindex="-1"
             data-panel="site"
           >
-            Site
-          </button>
+            <svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m2 19 7-10 4 5.5 3-4 6 8.5z"/><circle cx="17" cy="5.5" r="2"/></svg><span>Site</span></button>
         </div>
         <form id="parameters" autocomplete="off">
           <section id="panel-model" class="parameter-panel" role="tabpanel" aria-labelledby="tab-model">
@@ -814,8 +817,9 @@
                   </select></label
                 ><label
                   >Sky model<select name="skyModel">
+                    <option value="atmosphere">Atmosphere · physical scattering</option>
                     <option value="stylised">Stylised gradient</option>
-                    <option value="physical">Physical · Preetham scattering</option>
+                    <option value="physical">Preetham · analytic daylight</option>
                   </select></label
                 ><label
                   >Weather<select name="weather">
@@ -827,7 +831,7 @@
                 ><label class="check"><input name="fog" type="checkbox" />Atmospheric haze</label
                 ><label class="check"><input name="birds" type="checkbox" />Birds · flock by day</label>
                 <p class="hint">
-                  Stylised gradient is tuned for golden hour. Haze is tinted by the hour; rain and snow always add fog.
+                  Atmosphere computes Rayleigh, Mie and ozone scattering, with a real twilight. Haze is tinted by the hour; rain and snow always add fog.
                 </p>
               </div>
             </details>
@@ -855,6 +859,7 @@
       </aside>
       <section id="viewport" aria-label="Interactive 3D bridge">
         <div id="canvasHost"></div>
+        <svg id="elevationDims" class="elevation-dims" aria-hidden="true" hidden></svg>
         <div id="scene-loading" class="scene-loading" role="status" aria-live="polite" hidden>
           <img src="./favicon.svg" alt="" width="44" height="44"><span>Building your bridge…</span>
         </div>
@@ -905,9 +910,7 @@
             <div class="stats">
               <div><span>Total length</span><strong id="length"></strong></div>
               <div><span>Deck area</span><strong id="area"></strong></div>
-              <div><span>Min. clearance*</span><strong id="clearance"></strong></div>
               <div><span>Geometry</span><strong id="triangles"></strong></div>
-              <p>* Conservative whole-span bound with 200 mm allowance.</p>
             </div>
           </details>
         </div>
@@ -957,7 +960,14 @@
         <p>By Anthony Chéruel</p>
         <p class="hint">
           Starfield and grass species adapted from CK42BB/procedural-stars-threejs and procedural-grass-threejs (MIT);
-          physical sky after Tw1ddle/Sky-Shader and the three.js Sky object (MIT).
+          atmosphere after Hillaire 2020 (sebh/UnrealEngineSkyAtmosphere, MIT) and Bruneton 2008 (BSD); Preetham sky
+          after Tw1ddle/Sky-Shader and the three.js Sky object (MIT); river details after Noniv/web-ocean (MIT).
+        </p>
+        <h3>Version 0.6.4</h3>
+        <p>
+          A physical atmosphere as the default sky (with a real afterglow at dusk), a livelier river, icons on the
+          parameter tabs, a collapsible parameters panel, a lower top bar, span lengths under the Elevation view, High
+          quality with glow and no birds by default, and a new first example: Fall river, five steel spans.
         </p>
         <h3>Version 0.6.3</h3>
         <p>

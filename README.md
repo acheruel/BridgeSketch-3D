@@ -2,7 +2,7 @@
 
 **Try it online:** [BridgeSketch 3D on GitHub Pages](https://acheruel.github.io/BridgeSketch-3D/)
 
-**A quick visual tool for bridge concepts** · Version 0.6.3 · 25 October 2026 · Anthony Chéruel
+**A quick visual tool for bridge concepts** · Version 0.6.4 · 26 October 2026 · Anthony Chéruel
 
 BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a span arrangement, deck, supports and site, then inspect the result from above, below or along the obstacle being crossed. It runs in the browser from static files, with no account, backend or build step.
 
@@ -18,6 +18,15 @@ BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a
 - **Parameters:** collapsible sections and formulas in numeric fields, such as `=12*3`.
 - **History:** undo and redo with Ctrl+Z / Ctrl+Y.
 - **Files and export:** save and open JSON, share link, PNG snapshot and GLB export.
+
+## What's new in 0.6.4
+
+- **Sky:** a physical atmosphere (Rayleigh, Mie and ozone scattering, after Hillaire 2020) is the new default sky, with a real afterglow at dusk; the sun now sets behind the horizon. Stars and the Milky Way still come out at night.
+- **River:** faster current mid-channel, the river bed seen through shallow water, and sun glints that widen with distance.
+- **Interface:** the five parameter tabs have icons, the parameters panel collapses with the arrow on its edge, and the top bar is a third lower.
+- **Views:** span lengths under the Elevation view; no author name on the Section drawing; Model info no longer shows the minimum clearance.
+- **Defaults:** High quality, glow on, birds off. The first example is now **Fall river · 5 steel spans**.
+- **Launch screen:** the bridge has the proportions of that example (1.4 m girders deepening to 2.4 m over 45 % of each span) and tapered pier caps.
 
 ## What's new in 0.6.3
 

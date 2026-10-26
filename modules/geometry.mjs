@@ -42,7 +42,7 @@ export const defaults = {
   trafficMode: 'vehicles',
   waterStyle: 'glossy',
   skyMode: 'clouds',
-  renderQuality: 'balanced',
+  renderQuality: 'high',
   fog: true,
   weather: 'clear',
   bentWidth: 1.9,
@@ -66,8 +66,8 @@ export const defaults = {
   portalBeam: false,
   vCap: true,
   hammerheadFlare: 1.5,
-  bloom: false,
-  birds: true,
+  bloom: true,
+  birds: false,
   vAngle: 20,
   vArmThickness: 1,
   skew: 0,
@@ -115,7 +115,8 @@ export const defaults = {
   concreteFinish: 'light',
   // Concrete girder screens (cache-poutres) at the abutments, flush under the deck edge.
   girderScreens: true,
-  skyModel: 'stylised',
+  // 0.6.4: physical atmosphere (Hillaire 2020) by default; 'stylised' and 'physical' (Preetham) remain.
+  skyModel: 'atmosphere',
   spans: [25, 25, 25].map(length => ({ length, obstacle: 'water', width: 22, elevation: 0, angle: 90 })),
 };
 export const depths = [1, 1.2, 1.4, 1.6, 1.8];
@@ -376,7 +377,7 @@ export function validate(raw) {
   c.concreteFinish = { rough: 'light', formwork: 'light', weathered: 'warm' }[c.concreteFinish] ?? c.concreteFinish;
   if (!['light', 'warm'].includes(c.concreteFinish)) throw Error('Select a concrete finish.');
   if (typeof c.girderScreens !== 'boolean') throw Error('Invalid girder screen option.');
-  if (!['stylised', 'physical'].includes(c.skyModel)) throw Error('Select a sky model.');
+  if (!['atmosphere', 'stylised', 'physical'].includes(c.skyModel)) throw Error('Select a sky model.');
   const cycling = c.trafficMode === 'cyclists';
   const limits = {
     width: [cycling ? 3 : 4, 30],

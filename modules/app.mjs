@@ -23,6 +23,8 @@ import {
   crossAt,
   lowestCross,
   crossfallSection,
+  stations,
+  frame,
 } from './geometry.mjs';
 import { psboxParts } from './systems.mjs';
 import { profileCsv, profileTable, frenchNumber } from './road-profile.mjs';
@@ -202,6 +204,21 @@ function initWorkspace() {
       }
     };
   });
+  // 0.6.4: collapsible parameter panel (QuickerBridge); the choice is remembered in this browser.
+  const collapsePanel = collapsed => {
+    document.body.classList.toggle('panel-collapsed', collapsed);
+    const label = collapsed ? 'Show the parameters panel' : 'Collapse the parameters panel';
+    Object.assign($('panel-toggle'), { title: label });
+    $('panel-toggle').setAttribute('aria-label', label);
+    $('panel-toggle').setAttribute('aria-expanded', !collapsed);
+    try {
+      localStorage.setItem('bridgesketch-panel-collapsed', collapsed ? '1' : '0');
+    } catch {}
+  };
+  try {
+    if (localStorage.getItem('bridgesketch-panel-collapsed') === '1') collapsePanel(true);
+  } catch {}
+  $('panel-toggle').onclick = () => collapsePanel(!document.body.classList.contains('panel-collapsed'));
   $('focus').onclick = () => {
     const focus = document.body.classList.toggle('focus-mode');
     $('focus').setAttribute('aria-pressed', focus);
@@ -941,13 +958,53 @@ function renderSection() {
     }
     dims += `<line x1="${X(c.crownOffset)}" x2="${X(c.crownOffset)}" y1="${Y(1.4)}" y2="${Y(bottom - 0.3)}" stroke="#b0412e" stroke-width=".9" stroke-dasharray="10 3 2 3"/><text x="${X(c.crownOffset) + 4}" y="${Y(1.4) + 10}" font-size="10.5" fill="#b0412e">Center line</text>`;
   }
-  // Title block: variant, software version, date and author.
+  // Title block: variant, software version and date (0.6.4: no author name on the drawing).
   const sectionDate = new Date(),
     today = `${sectionDate.getFullYear()}-${String(sectionDate.getMonth() + 1).padStart(2, '0')}-${String(sectionDate.getDate()).padStart(2, '0')}`,
     bx = svgWidth - 300,
     escape = t => t.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
-  const titleBlock = `<g font-size="12" fill="#17374b"><rect x="${bx}" y="492" width="280" height="92" fill="#fff" stroke="#17374b" stroke-width="1.2"/><line x1="${bx}" x2="${bx + 280}" y1="518" y2="518" stroke="#17374b"/><line x1="${bx}" x2="${bx + 280}" y1="540" y2="540" stroke="#8aa1a7"/><line x1="${bx}" x2="${bx + 280}" y1="562" y2="562" stroke="#8aa1a7"/><text x="${bx + 10}" y="510" font-size="13" font-weight="600">${escape(c.name || 'Unnamed variant')}</text><text x="${bx + 10}" y="533">Transverse section · station ${s.toFixed(2)} m</text><text x="${bx + 10}" y="555">${escape(release.name)} v${release.version} · ${today}</text><text x="${bx + 10}" y="577">${escape(release.author)} · dimensions in metres</text></g>`;
+  const titleBlock = `<g font-size="12" fill="#17374b"><rect x="${bx}" y="492" width="280" height="92" fill="#fff" stroke="#17374b" stroke-width="1.2"/><line x1="${bx}" x2="${bx + 280}" y1="518" y2="518" stroke="#17374b"/><line x1="${bx}" x2="${bx + 280}" y1="540" y2="540" stroke="#8aa1a7"/><line x1="${bx}" x2="${bx + 280}" y1="562" y2="562" stroke="#8aa1a7"/><text x="${bx + 10}" y="510" font-size="13" font-weight="600">${escape(c.name || 'Unnamed variant')}</text><text x="${bx + 10}" y="533">Transverse section · station ${s.toFixed(2)} m</text><text x="${bx + 10}" y="555">${escape(release.name)} v${release.version} · ${today}</text><text x="${bx + 10}" y="577">Dimensions in metres</text></g>`;
   svg.innerHTML = `<title>Transverse deck section at station ${s.toFixed(2)} metres</title><g transform="translate(${svgWidth / 2} ${cy}) scale(${k} ${-k})">${drawing}</g><text x="30" y="54" fill="#17374b" font-size="22" font-weight="600">TRANSVERSE DECK SECTION</text><text x="30" y="83" fill="#557279" font-size="15">Station ${s.toFixed(2)} m · Deck ${c.width.toFixed(2)} m · ${c.material === 'box' ? 'Steel box' : c.material === 'steel' ? 'Steel plate' : c.material === 'slab' ? 'Concrete slab' : c.material === 'psbox' ? 'Prestressed concrete box' : 'Concrete NEBT'} · Depth ${actualDepth.toFixed(2)} m</text><text x="30" y="575" fill="#557279" font-size="14">Looking toward bridge end · Left / right follow alignment</text>${dims}${titleBlock}`;
+}
+// 0.6.4: span lengths under the Elevation view, a dimension chain like the Section drawing. Supports are projected
+// with the camera, so the chain follows pans and zooms; it sits below the lowest point of the structure.
+let elevationKey = '';
+function renderElevationDims() {
+  // An SVG element has no hidden property: toggle the attribute.
+  const svg = $('elevationDims'),
+    shown = view === 'elevation' && !!model;
+  svg.toggleAttribute('hidden', !shown);
+  if (!shown) return void (elevationKey = '');
+  const w = $('canvasHost').clientWidth,
+    h = $('canvasHost').clientHeight,
+    key = `${camera.projectionMatrix.elements.join()}${camera.matrixWorld.elements.join()}${w}x${h}`;
+  if (key === elevationKey) return;
+  elevationKey = key;
+  const ss = stations(config),
+    low = new T.Box3().setFromObject(model.structure).min.y,
+    screen = (s, y) => {
+      const f = frame(config, s),
+        p = new T.Vector3(f.x, y, f.z).project(camera);
+      return [((p.x + 1) / 2) * w, ((1 - p.y) / 2) * h];
+    },
+    xs = ss.map(s => screen(s, profile(config, s))[0]),
+    bottom = Math.max(...ss.map(s => screen(s, low)[1])),
+    y = Math.min(h - 150, bottom + 28),
+    top = Math.min(...ss.map(s => screen(s, profile(config, s))[1])),
+    tick = x => `<line class="tick" x1="${x - 4}" x2="${x + 4}" y1="${y + 4}" y2="${y - 4}"/>`;
+  let out = `<line x1="${xs[0]}" x2="${xs.at(-1)}" y1="${y}" y2="${y}"/>`;
+  for (const x of xs) out += `<line class="ext" x1="${x}" x2="${x}" y1="${Math.max(top, y - 40)}" y2="${y + 32}"/>${tick(x)}`;
+  config.spans.forEach((span, i) => {
+    if (Math.abs(xs[i + 1] - xs[i]) > 26)
+      out += `<text x="${(xs[i] + xs[i + 1]) / 2}" y="${y - 6}">${span.length.toFixed(2)}</text>`;
+  });
+  if (config.spans.length > 1) {
+    const yt = y + 26;
+    out += `<line x1="${xs[0]}" x2="${xs.at(-1)}" y1="${yt}" y2="${yt}"/>${[xs[0], xs.at(-1)].map(x => `<line class="tick" x1="${x - 4}" x2="${x + 4}" y1="${yt + 4}" y2="${yt - 4}"/>`).join('')}`;
+    out += `<text class="total" x="${(xs[0] + xs.at(-1)) / 2}" y="${yt - 6}">${totalLength(config).toFixed(2)} m</text>`;
+  }
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svg.innerHTML = out;
 }
 let updateQueue = Promise.resolve();
 function update(raw, options = {}) {
@@ -1030,8 +1087,6 @@ function rebuild(raw, { resetCamera = false, refresh = false, noHistory = false,
   $('length').innerHTML = `${L.toFixed(1)} <small>m</small>`;
   $('area').innerHTML = `${Math.round(L * config.width).toLocaleString()} <small>m²</small>`;
   $('spacing').textContent = `${config.material === 'slab' ? 'Not applicable' : spacing(config).toFixed(2) + ' m'}`;
-  $('clearance').innerHTML =
-    `${Math.min(...config.spans.map((_, i) => clearance(config, i))).toFixed(2)} <small>m</small>`;
   let triangles = 0;
   model.root.traverse(o => {
     if (o.isMesh)
@@ -1134,6 +1189,7 @@ function fit(mode = 'perspective') {
     controls.autoRotate = false;
     Object.assign(sectionZoom, { k: 1, cx: null, cy: null });
     renderSection();
+    renderElevationDims();
     document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === mode));
     return;
   }
@@ -1398,6 +1454,7 @@ async function boot() {
   scene.add(hemi);
   scene.environmentIntensity = 0.7;
   sky = makeSky();
+  sky.attach(renderer);
   scene.add(sky.mesh);
   reflection = createPlanarReflection();
   weather = makeWeather();
@@ -1466,7 +1523,8 @@ async function boot() {
     $('preset').value = presets[0].id;
     if (!config.name) $('sceneTitle').textContent = presets[0].label;
   }
-  restoreCamera(pendingCamera);
+  // 0.6.4: the welcome concept opens on its own camera (the launch fly-in then lands on it).
+  restoreCamera(pendingCamera ?? (location.hash ? null : presets[0].camera));
   const resize = () => {
     const { clientWidth: w, clientHeight: h } = $('canvasHost');
     renderer.setSize(w, h);
@@ -1580,6 +1638,7 @@ async function boot() {
         timing = $('perf-hud').hidden ? null : beginGpuTimer();
       renderer.info.reset();
       if (cameraMoved || frameCount % 2 === 0 || !reflection.texture) renderReflection();
+      renderElevationDims();
       draw();
       timing?.end();
       frameMs = performance.now() - start;
@@ -1841,6 +1900,7 @@ async function selectPreset(id) {
   if (!preset) return;
   await update(makePreset(id), { refresh: true, heavy: true, baseline: true });
   fit('perspective');
+  restoreCamera(preset.camera);
   $('preset').value = id;
   if (!config.name) $('sceneTitle').textContent = preset.label;
   $('preset').title = preset.description;

@@ -1,5 +1,18 @@
 # BridgeSketch 3D
 
+## 0.6.4 — 2026-10-26 — Anthony Chéruel
+
+Source : page Notion « BS3D version 0.6.4 » (avec le fichier `BridgeSketch-bridge_2026-10-26_v0.6.3.json`).
+
+- Ciel : le prototype atmosphérique de 0.6.3 est intégré (`sky.mjs`, modèle « Atmosphere », nouveau défaut). Tables de transmittance (256 × 64) et de diffusion multiple (32 × 32) calculées une fois, table de vue (192 × 108) recalculée quand le soleil bouge de plus de 0,1° environ ; le dôme et la capture d'éclairage ambiant (IBL) lisent la même table. Exposition qui s'ouvre au crépuscule, lueur rouge après le coucher, disque solaire à la position astronomique (il se couche derrière l'horizon). Les étoiles et la Voie lactée apparaissent toujours la nuit. Les modèles « Stylised » et « Preetham » restent disponibles, les anciens liens s'ouvrent tels quels.
+- Eau : reprises ciblées du prototype (`water.mjs`) : flow map à deux phases (courant plus rapide au milieu du chenal), lit visible en eau peu profonde (absorption de Beer-Lambert), reflets du soleil qui s'élargissent et s'atténuent avec la distance (le détail filtré revient en rugosité). L'écume de rive et le reflet plan sont conservés.
+- Écran de lancement : proportions du pont reprises de l'exemple JSON (poutres de 1,4 m en travée et 2,4 m aux piles, variation sur 45 % de chaque travée avec la parabole de l'application, dalle de 0,29 m), piles avec chevêtre effilé (1,6 m sur le fût, 1,1 m aux extrémités), fût rond et semelle ; culées avec mur garde-grève.
+- Valeurs par défaut : qualité « High », lueur (bloom) activée, oiseaux désactivés, ciel « Atmosphere ».
+- Interface : les 5 onglets de paramétrage deviennent un contrôle segmenté avec une icône chacun (style des onglets QuickerAtlas) ; le panneau de gauche se réduit avec la flèche ronde sur son bord (style QuickerBridge, choix mémorisé dans le navigateur) ; la bande du haut passe de 54 à 36 px (un tiers de moins), version et date sur une ligne.
+- Vues : longueurs des travées (m) et longueur totale en chaîne de cotes sous la vue « Elevation » (suit le zoom et le déplacement) ; plus de nom d'auteur dans le cartouche de la vue « Section » ; « Min. clearance » et sa note retirés de « Model info ».
+- Exemples : l'exemple 1 « Summer river » est remplacé par le JSON fourni, renommé « Fall river · 5 steel spans » (5 travées acier bleu, courbe R 700 m, biais 10°, piles portiques à 4 colonnes, automne, 14 h 30) ; il s'ouvre sur la caméra du fichier.
+- Tests : défauts 0.6.4, nouveau modèle de ciel ; les tests de géométrie gardent l'ancien exemple « Summer river » comme scène de référence.
+
 ## 0.6.3 — 2026-10-25 — Anthony Chéruel
 
 Source : page Notion « Bridge Sketch 3D version 0.6.3 ».

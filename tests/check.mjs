@@ -32,6 +32,23 @@ import {
   crossAt,
 } from '../modules/geometry.mjs';
 import { presets, makePreset } from '../modules/presets.mjs';
+// The 0.6.3 welcome concept (Summer river), kept as the reference scene of the geometry tests after 0.6.4 replaced
+// the example with the Fall river JSON.
+const summerRiver = () =>
+  validate({
+    ...defaults,
+    ...{ sceneWidth: 170, wallEnds: 'round', wallThickness: 1.2, pierType: 'wall', width: 13.2, overhang: 1.3 },
+    ...{ material: 'steel', depth: 1.3, variableDepth: true, pierDepth: 2.2, taper: 30, steelColor: 'green' },
+    ...{ barrierType: 'steel', leftRailing: '210A', rightRailing: '210A', lighting: 'poles', wingAngle: 35 },
+    ...{ sidewalkSide: 'right', sidewalkWidth: 2, elevation: 7.2, approach: 26, seed: 24 },
+    spans: [28, 36, 42, 36, 28].map((length, i) => ({
+      length,
+      obstacle: i % 4 ? 'water' : 'land',
+      width: i % 4 ? 26 : 10,
+      elevation: 0,
+      angle: 90,
+    })),
+  });
 registerHooks({
   resolve(specifier, context, next) {
     if (specifier === 'three')
@@ -538,7 +555,8 @@ for (const preset of presets) {
   const v = makePreset(preset.id),
     copy = makePreset(preset.id);
   assert.equal(v.movingTraffic, true);
-  assert.equal(v.laneWidth, v.trafficMode === 'cyclists' ? 1.8 : 3.5);
+  // 0.6.4: the Fall river example (Notion JSON) uses 3.7 m lanes.
+  assert.equal(v.laneWidth, v.trafficMode === 'cyclists' ? 1.8 : preset.id === 'river' ? 3.7 : 3.5);
   assert.equal(v.abutmentType, 'return');
   assert.ok(preset.label && preset.description);
   assert.deepEqual(v, copy);
@@ -790,7 +808,7 @@ for (const laneCount of [1, 2, 3, 4])
     });
     assert.equal(vehicleFits(v, 35, layout.roadMax + 1, 2.3, 1.12), false);
   }
-const winter = buildBridge(validate({ ...makePreset('river'), terrainMode: 'snow', sceneWidth: 180 }), materials, {
+const winter = buildBridge(validate({ ...summerRiver(), terrainMode: 'snow', sceneWidth: 180 }), materials, {
   batch: false,
 });
 const snowyTerrain = winter.setting.children.find(o => o.name === 'Terrain surface');
@@ -832,7 +850,7 @@ for (const continuous of [false, true])
     maxTriangles = Math.max(maxTriangles, n);
     disposeModel(model);
   }
-const animated = buildBridge(makePreset('river'), materials);
+const animated = buildBridge(summerRiver(), materials);
 const movingCar = animated.vehicles.find(o => !o.userData.route.road);
 assert.ok(movingCar, 'Curated bridge has a visible vehicle');
 const oldPosition = movingCar.position.clone();
@@ -840,7 +858,7 @@ animateTraffic(animated, 0.5);
 assert.ok(movingCar.position.distanceTo(oldPosition) > 0.01, 'Default traffic moves');
 assert.ok(animated.vehicles.every(o => [o.position.x, o.position.y, o.position.z].every(Number.isFinite)));
 disposeModel(animated);
-const parked = buildBridge(validate({ ...makePreset('river'), movingTraffic: false }), materials);
+const parked = buildBridge(validate({ ...summerRiver(), movingTraffic: false }), materials);
 const parkedCar = parked.vehicles[0],
   parkedPosition = parkedCar.position.clone();
 animateTraffic(parked, 0.5);
@@ -1004,7 +1022,7 @@ for (const v of [
     model.root.traverse(o => o.isMesh && pattern.test(o.name) && n++);
     return n;
   };
-  const base = makePreset('river');
+  const base = summerRiver();
   // Type 311: 880 mm, 460 mm base, 275 mm top; 311A adds a rail 400 mm above the concrete.
   const b311 = concreteBarrier('311', 0, -1, 0);
   assert.equal(edgeWidth('311'), 0.46);
@@ -1077,20 +1095,29 @@ for (const v of [
   assert.ok(autumn.setting.children.some(o => o.isInstancedMesh && o.material === materials.leavesFall.oak));
   assert.equal(typeof autumn.setting.userData.treeLod, 'function');
   disposeModel(autumn);
-  assert.equal(defaults.renderQuality, 'balanced');
+  // 0.6.4: High quality, glow on and birds off by default; the atmosphere is the default sky.
+  assert.equal(defaults.renderQuality, 'high');
+  assert.ok(defaults.bloom && !defaults.birds && defaults.skyModel === 'atmosphere');
+  assert.throws(() => validate({ ...defaults, skyModel: 'hillaire' }), /sky model/);
+  // The welcome example is the Notion JSON: five blue steel spans, 1.4 → 2.4 m girders over 45 %, with its camera.
+  const fall = makePreset(presets[0].id);
+  assert.equal(presets[0].label, 'Fall river · 5 steel spans');
+  assert.deepEqual(fall.spans.map(s => s.length), [28, 36, 42, 36, 28]);
+  assert.ok(fall.variableDepth && fall.depth === 1.4 && fall.pierDepth === 2.4 && fall.taper === 45);
+  assert.ok(presets[0].camera.position.length === 3 && presets[0].camera.target.length === 3);
   assert.equal(guessTier('ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11)'), 'performance');
   assert.equal(guessTier('ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Laptop GPU)'), 'high');
   assert.equal(guessTier('ANGLE (Intel, Intel(R) Iris(R) Xe Graphics)'), 'balanced');
   assert.equal(effectiveQuality('high'), 'high');
   assert.ok(renderSettings.balanced.pixelRatio < renderSettings.high.pixelRatio);
   assert.equal(stepDownAuto('performance'), null);
-  for (const p of presets) assert.ok(makePreset(p.id).renderQuality === 'balanced', p.id + ' defaults to Balanced');
+  for (const p of presets) assert.ok(makePreset(p.id).renderQuality === 'high', p.id + ' defaults to High');
 }
 // 0.5.6: several concrete boxes, flowing time, meandering banks in the profile-following terrain.
 {
   const { bearingPositions, psboxLayout } = await import('../modules/geometry.mjs');
   const { terrainSampler, coordinates } = await import('../modules/terrain.mjs');
-  const twin = validate({ ...makePreset('river'), material: 'psbox', psboxCount: 2, width: 16, depth: 2 });
+  const twin = validate({ ...summerRiver(), material: 'psbox', psboxCount: 2, width: 16, depth: 2 });
   assert.equal(psboxLayout(twin).count, 2);
   assert.equal(bearingPositions(twin).length, 4, 'two bearings per box');
   assert.equal(twin.girders, 4);
@@ -1110,7 +1137,8 @@ for (const v of [
   assert.throws(() => validate({ ...twin, psboxCount: 5 }), /1 to 4/);
   assert.equal(defaults.timeFlow, true);
   assert.throws(() => validate({ ...twin, timeFlow: 'yes' }), /time flow/);
-  for (const p of presets) assert.equal(makePreset(p.id).timeFlow, true);
+  // 0.6.4: the Fall river example keeps its 14:30 light (time stopped, as in the Notion JSON).
+  for (const p of presets) assert.equal(makePreset(p.id).timeFlow, p.id !== 'river');
   // Profile terrain: the shoreline moves along the river (not a straight cut).
   const cut = makePreset('deck-arch'),
     ground = terrainSampler(cut),
@@ -1404,6 +1432,7 @@ for (const folder of ['.', 'modules', 'models', 'vendor', 'textures'])
     ['concreteFinish', 'light'],
     ['concreteFinish', 'warm'],
     ['skyModel', 'physical'],
+    ['skyModel', 'stylised'],
     ['girderScreens', false],
   ])
     assert.equal(validate({ ...c, [k]: v })[k], v);
@@ -1539,7 +1568,7 @@ for (const folder of ['.', 'modules', 'models', 'vendor', 'textures'])
 // 0.6.2 road profile: chainage 0 at the west abutment front face, datum 30.000 there, 5 m grid, support axes.
 {
   const { profileTable, profileCsv, frenchNumber, FRONT_FACE } = await import('../modules/road-profile.mjs');
-  const pc = makePreset('river'),
+  const pc = summerRiver(),
     rows = profileTable(pc),
     L = totalLength(pc);
   const zero = rows.find(r => r.label.startsWith('West axis'));

@@ -3,7 +3,8 @@ import * as T from 'three';
 // One sky draw call: analytic day/sunset gradient, Mie sun halo and procedural drifting clouds.
 // The same material captures the image-based lighting, so ambient light and reflections follow the hour.
 const fragmentShader = `precision highp float;
-varying vec3 direction;uniform float time,daylight,golden,clouds,groundMix,sunDisk,fogAmount,overcast,model,night,milkyWay;uniform vec3 sunDirection,fogColor,trueSun,galaxyPole;
+varying vec3 direction;uniform float time,daylight,golden,clouds,groundMix,sunDisk,fogAmount,overcast,model,night,milkyWay,skyExposure;uniform vec3 sunDirection,fogColor,trueSun,galaxyPole;
+uniform sampler2D skyView;
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.)),f.x),f.y);}
 float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*noise(p);p=mat2(1.6,1.2,-1.2,1.6)*p;a*=.5;}return v;}
@@ -39,13 +40,21 @@ vec3 preetham(vec3 d,vec3 s){
   float exposure=.42*mix(5.,1.,smoothstep(0.,.4,s.y));
   return 1.-exp(-c*exposure);
 }
+// Atmosphere (0.6.4, default): reads the sky-view table (azimuth from the sun across, latitude down with more rows
+// near the horizon), then the same exponential shoulder. The exposure opens up through twilight like a camera.
+vec3 atmosphere(vec3 d,vec3 s){
+  float lat=asin(clamp(d.y,-1.,1.)),az=acos(clamp(dot(normalize(d.xz+1e-5),normalize(s.xz+1e-5)),-1.,1.));
+  float v=lat/1.5707963,y=.5+.5*sign(v)*sqrt(abs(v));
+  vec3 L=texture2D(skyView,vec2(az/3.14159265,y)).rgb;
+  return 1.-exp(-L*skyExposure*mix(7.,1.,smoothstep(-.16,.25,s.y)));
+}
 void main(){
   vec3 d=normalize(direction),s=normalize(sunDirection);
   vec3 col=skyColor(d,s);
-  if(model>0.){
-    vec3 ts=normalize(trueSun);
-    col=mix(col,preetham(vec3(d.x,max(d.y,.001),d.z),ts),model*smoothstep(-.1,.04,ts.y));
-  }
+  vec3 ts=normalize(trueSun);
+  // Below the horizon the caller passes the horizon direction (haze): the scene's ground hides the true ground.
+  if(model>1.5)col=mix(col,atmosphere(vec3(d.x,max(d.y,.001),d.z),ts),smoothstep(-.26,-.07,ts.y));
+  else if(model>0.)col=mix(col,preetham(vec3(d.x,max(d.y,.001),d.z),ts),model*smoothstep(-.1,.04,ts.y));
   // Milky Way (0.6.0): a faint band along a great circle set by the scenery seed, only on clear nights.
   if(milkyWay>0.&&d.y>0.){
     float b=dot(d,galaxyPole),band=exp(-b*b*28.);
@@ -70,7 +79,8 @@ void main(){
     float grey=dot(col,vec3(.3,.5,.2));
     col=mix(col,vec3(grey)*vec3(.92,.96,1.02),overcast*.65);
   }
-  float sun=smoothstep(.9994,.9998,mu)*daylight;
+  // The atmosphere draws the disk at the astronomical sun, so it sets behind the horizon with the twilight.
+  float sun=model>1.5?smoothstep(.9994,.9998,dot(d,ts))*smoothstep(-.005,.01,ts.y):smoothstep(.9994,.9998,mu)*daylight;
   col+=sun*sunDisk*vec3(6.,4.6,3.4);
   col=mix(col,col*vec3(.62,.66,.78),smoothstep(0.,-.55,d.y)*(1.-groundMix));
   // Atmospheric haze: the horizon band fades into the scene fog colour.
@@ -93,6 +103,8 @@ export function makeSky() {
     model: { value: 0 },
     night: { value: 0 },
     milkyWay: { value: 0 },
+    skyExposure: { value: 12 },
+    skyView: { value: null },
     fogColor: { value: new T.Color('#b4c7d4') },
     sunDirection: { value: new T.Vector3(-0.6, 0.45, 0.6) },
     trueSun: { value: new T.Vector3(-0.6, 0.45, 0.6) },
@@ -136,7 +148,8 @@ export function makeSky() {
   envMesh.scale.setScalar(50);
   envScene.add(envMesh);
   let pmrem = null,
-    envTarget = null;
+    envTarget = null,
+    atmosphere = null;
   const stars = makeStars(uniforms);
   mesh.add(stars.points);
   return {
@@ -149,12 +162,20 @@ export function makeSky() {
       uniforms.golden.value = golden;
       uniforms.sunDirection.value.copy(sun.position).normalize();
       if (trueSun) uniforms.trueSun.value.copy(trueSun).normalize();
+      if (uniforms.model.value === 2) atmosphere?.update(uniforms.trueSun.value);
       uniforms.night.value = 1 - T.MathUtils.smoothstep(daylight, 0.02, 0.4);
       uniforms.milkyWay.value = uniforms.night.value * (1 - uniforms.overcast.value);
     },
+    // The tables need the renderer: attach() once it exists; a sun move rebuilds only the sky-view table.
+    attach(renderer) {
+      atmosphere = makeAtmosphere(renderer);
+      uniforms.skyView.value = atmosphere.texture;
+      if (uniforms.model.value === 2) atmosphere.update(uniforms.trueSun.value, true);
+    },
     setModel(name) {
-      uniforms.model.value = name === 'physical' ? 1 : 0;
+      uniforms.model.value = { stylised: 0, physical: 1, atmosphere: 2 }[name] ?? 0;
       envUniforms.model.value = uniforms.model.value;
+      if (uniforms.model.value === 2) atmosphere?.update(uniforms.trueSun.value);
     },
     setSeed(seed) {
       stars.setSeed(seed);
@@ -185,6 +206,160 @@ export function makeSky() {
       envMaterial.dispose();
       envTarget?.dispose();
       pmrem?.dispose();
+      atmosphere?.dispose();
+    },
+  };
+}
+
+// Physical atmosphere (0.6.4), after Hillaire 2020 (sebh/UnrealEngineSkyAtmosphere, MIT) and Bruneton 2008 (BSD):
+// transmittance (256 x 64) and multiple scattering (32 x 32) are rendered once, the 192 x 108 sky-view table again
+// when the sun moves by more than about 0.1°. Rayleigh, Mie and ozone; ground albedo 0.3. Units: km.
+const atmosphereCommon = `precision highp float;varying vec2 vUv;
+const float Rg=6360.,Rt=6460.;
+const vec3 rayleighS=vec3(5.802,13.558,33.1)*1e-3;
+const float mieS=3.996e-3,mieE=4.40e-3;
+const vec3 ozoneA=vec3(.650,1.881,.085)*1e-3;
+vec3 extinctionAt(float h){
+  float r=exp(-h/8.),m=exp(-h/1.2),o=max(0.,1.-abs(h-25.)/15.);
+  return rayleighS*r+vec3(mieE*m)+ozoneA*o;
+}
+// Distance to the sphere of radius R from radius r along mu (cos zenith); -1 when missed.
+float sphere(float r,float mu,float R){float d=r*r*(mu*mu-1.)+R*R;return d<0.?-1.:-r*mu+sqrt(d);}
+bool hitsGround(float r,float mu){return mu<0.&&r*r*(mu*mu-1.)+Rg*Rg>=0.;}
+// Near intersection: the far root goes through the planet and overflows to NaN on ANGLE.
+float groundDistance(float r,float mu){return -r*mu-sqrt(max(0.,r*r*(mu*mu-1.)+Rg*Rg));}
+vec2 transUV(float r,float mu){
+  float H=sqrt(Rt*Rt-Rg*Rg),rho=sqrt(max(0.,r*r-Rg*Rg));
+  float d=max(0.,sphere(r,mu,Rt)),dmin=Rt-r,dmax=rho+H;
+  return vec2((d-dmin)/(dmax-dmin),rho/H);
+}
+void transInverse(vec2 uv,out float r,out float mu){
+  float H=sqrt(Rt*Rt-Rg*Rg),rho=H*uv.y;r=sqrt(rho*rho+Rg*Rg);
+  float dmin=Rt-r,dmax=rho+H,d=dmin+uv.x*(dmax-dmin);
+  mu=d==0.?1.:clamp((H*H-rho*rho-d*d)/(2.*r*d),-1.,1.);
+}
+uniform sampler2D transLut;
+vec3 sunTrans(float r,float mu){return hitsGround(r,mu)?vec3(0.):texture2D(transLut,transUV(r,mu)).rgb;}`;
+const transmittanceShader = `${atmosphereCommon}
+void main(){
+  float r,mu;transInverse(vUv,r,mu);
+  float d=sphere(r,mu,Rt),dt=d/40.;vec3 od=vec3(0.);
+  for(int i=0;i<40;i++){float t=(float(i)+.5)*dt;float h=sqrt(r*r+t*t+2.*r*t*mu)-Rg;od+=extinctionAt(h)*dt;}
+  gl_FragColor=vec4(exp(-od),1.);
+}`;
+// Multiple scattering (Hillaire 2020, sec. 5.5): second order and transfer factor over 64 directions, summed as a
+// geometric series.
+const multipleShader = `${atmosphereCommon}
+void main(){
+  float muS=vUv.x*2.-1.,r=Rg+max(.1,vUv.y*(Rt-Rg));
+  vec3 sun=vec3(sqrt(1.-muS*muS),muS,0.),L2=vec3(0.),fms=vec3(0.);
+  for(int a=0;a<8;a++)for(int b=0;b<8;b++){
+    float th=acos(1.-2.*(float(a)+.5)/8.),ph=6.2831853*(float(b)+.5)/8.;
+    vec3 dir=vec3(sin(th)*cos(ph),cos(th),sin(th)*sin(ph));
+    float mu=dir.y,dg=hitsGround(r,mu)?groundDistance(r,mu):-1.,d=dg>0.?dg:sphere(r,mu,Rt),dt=d/20.;
+    vec3 T=vec3(1.),Lp=vec3(0.),Fp=vec3(0.);
+    for(int i=0;i<20;i++){
+      float t=(float(i)+.5)*dt;vec3 p=vec3(0.,r,0.)+dir*t;float rp=length(p),h=rp-Rg;
+      vec3 sc=rayleighS*exp(-h/8.)+vec3(mieS*exp(-h/1.2)),ext=extinctionAt(h);
+      vec3 Ts=sunTrans(rp,dot(p,sun)/rp),att=exp(-ext*dt),k=(1.-att)/max(ext,vec3(1e-6));
+      Lp+=T*sc*Ts/(4.*3.14159)*k;Fp+=T*sc*k;T*=att;
+    }
+    if(dg>0.){vec3 p=vec3(0.,r,0.)+dir*dg;Lp+=T*sunTrans(Rg,dot(normalize(p),sun))*max(dot(normalize(p),sun),0.)*.3/3.14159;}
+    L2+=Lp/64.;fms+=Fp/64.;
+  }
+  gl_FragColor=vec4(L2/(1.-fms),1.);
+}`;
+const viewShader = `${atmosphereCommon}
+uniform vec3 sunDir;uniform sampler2D msLut;
+vec3 multi(float r,float muS){return texture2D(msLut,vec2(muS*.5+.5,(r-Rg)/(Rt-Rg))).rgb;}
+void main(){
+  float v=vUv.y*2.-1.,lat=sign(v)*v*v*1.5707963,az=vUv.x*3.14159265;
+  vec3 dir=vec3(cos(lat)*cos(az),sin(lat),cos(lat)*sin(az));
+  vec3 sun=normalize(vec3(sqrt(max(0.,1.-sunDir.y*sunDir.y)),sunDir.y,0.));
+  float r=Rg+.2,mu=dir.y,dg=hitsGround(r,mu)?groundDistance(r,mu):-1.,d=dg>0.?dg:sphere(r,mu,Rt),dt=d/32.;
+  float c=dot(dir,sun),pr=3./(16.*3.14159)*(1.+c*c),g=.8,pm=3./(8.*3.14159)*(1.-g*g)*(1.+c*c)/((2.+g*g)*pow(1.+g*g-2.*g*c,1.5));
+  vec3 T=vec3(1.),L=vec3(0.);
+  for(int i=0;i<32;i++){
+    float t=(float(i)+.5)*dt;vec3 p=vec3(0.,r,0.)+dir*t;float rp=length(p),h=rp-Rg,muS=dot(p,sun)/rp;
+    vec3 rs=rayleighS*exp(-h/8.),ms=vec3(mieS*exp(-h/1.2)),ext=extinctionAt(h);
+    vec3 S=(rs*pr+ms*pm)*sunTrans(rp,muS)+(rs+ms)*multi(rp,muS);
+    vec3 att=exp(-ext*dt);L+=T*S*(1.-att)/max(ext,vec3(1e-6));T*=att;
+  }
+  gl_FragColor=vec4(L,1.);
+}`;
+function makeAtmosphere(renderer) {
+  const target = (w, h) =>
+    new T.WebGLRenderTarget(w, h, {
+      type: T.HalfFloatType,
+      minFilter: T.LinearFilter,
+      magFilter: T.LinearFilter,
+      wrapS: T.ClampToEdgeWrapping,
+      wrapT: T.ClampToEdgeWrapping,
+      depthBuffer: false,
+      generateMipmaps: false,
+    });
+  const trans = target(256, 64),
+    multiple = target(32, 32),
+    view = target(192, 108),
+    quad = new T.Mesh(new T.PlaneGeometry(2, 2)),
+    quadScene = new T.Scene(),
+    ortho = new T.OrthographicCamera();
+  quad.frustumCulled = false;
+  quadScene.add(quad);
+  const material = (fragmentShader, uniforms) =>
+    new T.ShaderMaterial({
+      vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}',
+      fragmentShader,
+      uniforms,
+      depthTest: false,
+      depthWrite: false,
+    });
+  const sunDir = new T.Vector3(),
+    viewMaterial = material(viewShader, {
+      sunDir: { value: sunDir },
+      transLut: { value: trans.texture },
+      msLut: { value: multiple.texture },
+    });
+  // Off-screen pass: keeps the caller's target and a pending shadow-map refresh (a render clears that flag).
+  const pass = (m, out) => {
+    const previous = renderer.getRenderTarget(),
+      xr = renderer.xr.enabled,
+      { autoUpdate, needsUpdate } = renderer.shadowMap;
+    quad.material = m;
+    renderer.xr.enabled = false;
+    renderer.shadowMap.autoUpdate = false;
+    renderer.setRenderTarget(out);
+    renderer.render(quadScene, ortho);
+    renderer.setRenderTarget(previous);
+    Object.assign(renderer.shadowMap, { autoUpdate, needsUpdate });
+    renderer.xr.enabled = xr;
+  };
+  let built = false;
+  const last = new T.Vector3(9, 9, 9);
+  return {
+    texture: view.texture,
+    update(sun, force = false) {
+      if (!built) {
+        for (const [shader, out, uniforms] of [
+          [transmittanceShader, trans, {}],
+          [multipleShader, multiple, { transLut: { value: trans.texture } }],
+        ]) {
+          const m = material(shader, uniforms);
+          pass(m, out);
+          m.dispose();
+        }
+        built = true;
+        force = true;
+      }
+      sunDir.copy(sun).normalize();
+      if (!force && sunDir.distanceToSquared(last) < 3e-6) return;
+      last.copy(sunDir);
+      pass(viewMaterial, view);
+    },
+    dispose() {
+      for (const t of [trans, multiple, view]) t.dispose();
+      viewMaterial.dispose();
+      quad.geometry.dispose();
     },
   };
 }

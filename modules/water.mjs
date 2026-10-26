@@ -4,6 +4,9 @@ import * as T from 'three';
 // Techniques adapted from the reviewed references, without their multi-pass simulations:
 // - three.js Reflector / Water: one planar reflection at reduced resolution with an oblique clip plane.
 // - jeantimex/threejs-water (MIT): Fresnel-weighted sky/scene reflection, water body tint and sun glints.
+// - 0.6.4, from the 0.6.3 prototype after Noniv/web-ocean (MIT): a two-phase flow map (faster mid-channel current),
+//   the river bed seen through shallow water (Beer-Lambert) and glints that widen and dim with distance, the normal
+//   detail filtered out at range coming back as roughness.
 // The standard PBR material keeps fog, shadows, tone mapping and the GLB export path intact.
 
 export function makeWaterMaterial() {
@@ -26,20 +29,20 @@ export function makeWaterMaterial() {
   material.userData.flowTime = u.flowTime;
   material.userData.water = u;
   material.userData.sunGlow = { value: 0 };
-  material.customProgramCacheKey = () => 'bridgesketch-river-060';
+  material.customProgramCacheKey = () => 'bridgesketch-river-064';
   material.onBeforeCompile = shader => {
     Object.assign(shader.uniforms, u);
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
         `#include <common>
-attribute float waterDepth;attribute vec2 flowDirection;
-varying float vWaterDepth;varying vec3 vWaterWorld;varying vec2 vRiver;varying vec2 vFlow;`,
+attribute float waterDepth,shore;attribute vec2 flowDirection;
+varying float vWaterDepth,vShore;varying vec3 vWaterWorld;varying vec2 vRiver;varying vec2 vFlow;`,
       )
       .replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
-vWaterDepth=waterDepth;vRiver=uv;vFlow=flowDirection;vWaterWorld=(modelMatrix*vec4(transformed,1.)).xyz;`,
+vWaterDepth=waterDepth;vShore=clamp(shore,-1.,1.);vRiver=uv;vFlow=flowDirection;vWaterWorld=(modelMatrix*vec4(transformed,1.)).xyz;`,
       );
     shader.fragmentShader = shader.fragmentShader
       .replace(
@@ -47,8 +50,8 @@ vWaterDepth=waterDepth;vRiver=uv;vFlow=flowDirection;vWaterWorld=(modelMatrix*ve
         `#include <common>
 uniform float flowTime,reflectionStrength,rippleStrength,distortion,glint;uniform sampler2D waves,reflection;uniform mat4 reflectionMatrix;
 uniform vec3 shallowColor,deepColor,foamColor,sunDirection,sunColor;
-varying float vWaterDepth;varying vec3 vWaterWorld;varying vec2 vRiver;varying vec2 vFlow;
-vec3 waterWorldNormal;
+varying float vWaterDepth,vShore;varying vec3 vWaterWorld;varying vec2 vRiver;varying vec2 vFlow;
+vec3 waterWorldNormal;float waterFade;
 float waterHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float waterNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(waterHash(i),waterHash(i+vec2(1,0)),f.x),mix(waterHash(i+vec2(0,1)),waterHash(i+vec2(1,1)),f.x),f.y);}
 vec2 waveSlope(vec2 p,float scale,vec2 drift){return texture2D(waves,p/scale+drift).xy*2.-1.;}`,
@@ -56,24 +59,29 @@ vec2 waveSlope(vec2 p,float scale,vec2 drift){return texture2D(waves,p/scale+dri
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
+// Distance fade first: three.js reads the roughness before the normal map chunk.
+waterFade=1./(1.+.015*length(vWaterWorld-cameraPosition));
 float waterDepthMix=smoothstep(.02,1.25,vWaterDepth);
-vec3 waterBody=mix(shallowColor,deepColor,waterDepthMix);
+// Beer-Lambert: a muddy-green bed seen through the water column, fading into the body colour with depth.
+vec3 bedTrans=exp(-vec3(.9,.32,.26)*3.6*vWaterDepth);
+vec3 waterBody=mix(vec3(.11,.10,.06)*(.35+.65*dot(shallowColor,vec3(1.))),mix(shallowColor,deepColor,waterDepthMix),1.-bedTrans);
 float shoreNoise=waterNoise(vRiver*vec2(.9,1.6)+vec2(-flowTime*.7,0.));
 float foam=(1.-smoothstep(.01,.07+.05*shoreNoise,vWaterDepth))*smoothstep(.35,.8,shoreNoise);
 diffuseColor.rgb=mix(waterBody*.55,foamColor,foam*.45);`,
       )
       .replace(
         '#include <roughnessmap_fragment>',
-        '#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,.55,foam);',
+        '#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor+.1*(1.-waterFade),.55,foam);',
       )
       .replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
 {
-  vec2 flow=vec2(flowTime,0.);
-  vec2 p=vRiver;
-  float fade=1./(1.+.012*length(vWaterWorld-cameraPosition));
-  vec2 s=waveSlope(p-flow*.55,17.,vec2(0.))*.6+waveSlope(vec2(p.y,-p.x)*.8-flow.yx*.3,36.,vec2(.71,.53))*.45+waveSlope(p*vec2(1.,1.25)-flow*.9,6.5,vec2(.37,.11))*.3*fade;
+  // Two-phase flow map: each phase scrolls at the local speed (faster mid-channel) and resets while the other shows.
+  float cur=1.-.6*vShore*vShore,ph0=fract(flowTime*.12),ph1=fract(flowTime*.12+.5),wb=abs(1.-2.*ph0);
+  vec2 p=vRiver,q0=p-vec2(ph0*cur*8.,0.),q1=p-vec2(ph1*cur*8.,0.)+vec2(.37,.71),flow=vec2(flowTime,0.);
+  float fade=waterFade;
+  vec2 s=mix(waveSlope(q0,17.,vec2(0.)),waveSlope(q1,17.,vec2(0.)),wb)*.6+waveSlope(vec2(p.y,-p.x)*.8-flow.yx*.3,36.,vec2(.71,.53))*.45+mix(waveSlope(q0*vec2(1.,1.25),6.5,vec2(.37,.11)),waveSlope(q1*vec2(1.,1.25),6.5,vec2(.37,.11)),wb)*.3*fade;
   s*=rippleStrength*fade*(1.-foam*.6);
   vec2 along=normalize(vFlow),across=vec2(-along.y,along.x);
   waterWorldNormal=normalize(vec3(0.,1.,0.)+vec3(along.x,0.,along.y)*s.x*.5+vec3(across.x,0.,across.y)*s.y*.5);
@@ -99,7 +107,8 @@ radiance*=1.35;
         `#include <emissivemap_fragment>
 {
   vec3 V=normalize(cameraPosition-vWaterWorld);vec3 L=normalize(sunDirection);
-  vec3 R=reflect(-L,waterWorldNormal);float spark=pow(max(dot(R,V),0.),900.)*1.4+pow(max(dot(R,V),0.),60.)*.07;
+  // Glints widen and dim with distance, as the filtered roughness grows.
+  vec3 R=reflect(-L,waterWorldNormal);float rv=max(dot(R,V),0.),spark=pow(rv,mix(180.,1100.,waterFade))*mix(.45,1.5,waterFade)+pow(rv,60.)*.07;
   float scatter=pow(max(dot(V,-L)*.5+.5,0.),4.)*(1.-waterDepthMix*.5);
   totalEmissiveRadiance+=sunColor*(spark*glint*(1.-foam)+waterBody*scatter*.25*max(L.y,0.));
 }`,
