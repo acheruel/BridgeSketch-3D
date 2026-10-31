@@ -24,6 +24,9 @@
       <div class="header-right">
         <div class="release-info"><b id="release-version"></b><small id="release-date"></small></div>
         <button id="about-button" aria-haspopup="dialog" title="Release notes and credits">About</button>
+        <a class="gh-link" href="https://github.com/acheruel/BridgeSketch-3D" target="_blank" rel="noopener" title="Source code on GitHub" aria-label="Source code on GitHub">
+          <svg viewBox="0 0 16 16" width="19" height="19" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        </a>
       </div>
     </header>
     <main class="workspace">
@@ -77,6 +80,14 @@
               <button id="profile-menu" type="button" role="menuitem">
                 <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17c4-1 5-8 9-8s5 5 9 4"/><path d="M3 21h18"/><path d="M7 21v-3M12 21v-9M17 21v-6"/></svg
                 ><span class="mi-text"><b>Road profile…</b><small>Chainage, elevation and X, Y (.csv)</small></span>
+              </button>
+              <button id="share" type="button" role="menuitem" class="menu-sep">
+                <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg
+                ><span class="mi-text"><b>Copy link</b><small>Share the bridge and the camera view</small></span>
+              </button>
+              <button id="export-glb" type="button" role="menuitem">
+                <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9Z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg
+                ><span class="mi-text"><b>Export GLB</b><small>3D model for Blender, SketchUp, Revit</small></span>
               </button>
               <button id="undo" type="button" role="menuitem" data-action="undo" class="menu-sep" disabled>
                 <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg
@@ -855,7 +866,11 @@
             </details>
           </section>
         </form>
-        <footer class="input-footer">Metres unless shown otherwise · concept geometry</footer>
+        <footer class="input-footer" aria-label="Model info">
+          <span class="model-facts"
+            ><b id="length" title="Total length"></b><b id="area" title="Deck area"></b><b id="triangles" title="Triangles in the scene"></b></span
+          ><span>Metres · concept geometry</span>
+        </footer>
       </aside>
       <section id="viewport" aria-label="Interactive 3D bridge">
         <div id="canvasHost"></div>
@@ -877,42 +892,53 @@
           <h2 id="sceneTitle">River crossing</h2>
           <p id="sceneSubtitle"></p>
         </div>
-        <div class="view-tools" role="group" aria-label="Camera">
-          <button data-view="perspective" aria-pressed="true">3D</button
-          ><button data-view="plan" aria-pressed="false">Plan</button
-          ><button data-view="elevation" aria-pressed="false">Elevation</button
-          ><button data-view="section" aria-pressed="false">Section</button><button id="fit">Fit</button
-          ><button
-            id="drive"
-            aria-pressed="false"
-            title="Tour beneath the bridge from the middle road, river or railway · Escape to stop"
-          >
-            Drive</button
-          ><button id="focus" aria-pressed="false" title="Hide parameters">Focus</button>
-        </div>
-        <div class="time-control">
-          <label for="timeOfDay"
-            ><span>Time of day <output id="timeLabel" for="timeOfDay">18:00</output></span
-            ><button id="timePlay" type="button" class="time-play" aria-pressed="true" title="Stop the time">❚❚</button></label
-          ><input id="timeOfDay" type="range" min="0" max="24" step=".25" value="18" aria-label="Time of day" />
-        </div>
-        <div class="view-options">
-          <label><input id="reveal" type="checkbox" />Reveal structure</label
-          ><label><input name="showTraffic" form="parameters" type="checkbox" />Show traffic</label
-          ><label><input name="movingTraffic" form="parameters" type="checkbox" />Moving traffic</label
-          ><label title="Frame rate, CPU and GPU time, draw calls and quality tier"><input id="stats" type="checkbox" />Stats</label>
-        </div>
-        <div class="export-tools">
-          <button id="image" title="Save a high-quality PNG snapshot (lossless)"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3.2l1.6-2.2h6.4L16.8 7H20a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg><span>Snapshot</span></button><button id="export-glb">Export GLB</button
-          ><button id="share">Copy link</button>
-          <details id="model-info">
-            <summary>Model info</summary>
-            <div class="stats">
-              <div><span>Total length</span><strong id="length"></strong></div>
-              <div><span>Deck area</span><strong id="area"></strong></div>
-              <div><span>Geometry</span><strong id="triangles"></strong></div>
+        <!-- 0.6.5: one dock in the top-right corner (QuickerAtlas « Couches » panel) holds the views, the camera
+             modes, the time of day and the display toggles; Export GLB and Copy link moved to the File menu and the
+             model facts to the foot of the parameters panel, so the render stays clear. -->
+        <div class="hud" id="hud">
+          <button id="image" class="hud-btn hud-icon" type="button" title="Snapshot · save a high-quality PNG (lossless)" aria-label="Snapshot"
+            ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3.2l1.6-2.2h6.4L16.8 7H20a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.6"/></svg></button
+          ><div class="dock" id="dock">
+            <button id="dock-button" class="hud-btn dock-button" type="button" aria-expanded="false" aria-controls="dock-panel" title="Views, camera, time of day and display"
+              ><svg class="dock-layers" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15.5l9 5 9-5-3.2-1.8L12 17l-5.8-3.3z" opacity=".55"/><path d="M3 11.5l9 5 9-5-3.2-1.8L12 13l-5.8-3.3z" opacity=".8"/><path d="M12 2.5l9 5-9 5-9-5z"/></svg
+              ><span id="dock-view">3D</span><span class="dock-time" id="dock-time">18:00</span
+              ><span class="caret" aria-hidden="true">▾</span></button
+            >
+            <div class="dock-panel" id="dock-panel" role="group" aria-label="View and display" hidden>
+              <div class="dock-h">View</div>
+              <div class="dock-views" role="group" aria-label="Camera view">
+                <button data-view="perspective" type="button" aria-pressed="true"
+                  ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9Z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg>3D</button
+                ><button data-view="plan" type="button" aria-pressed="false"
+                  ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2Z"/><path d="M9 4v14M15 6v14"/></svg>Plan</button
+                ><button data-view="elevation" type="button" aria-pressed="false"
+                  ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8h20M2 20h20"/><path d="M5 8v12M12 8v12M19 8v12"/></svg>Elevation</button
+                ><button data-view="section" type="button" aria-pressed="false"
+                  ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 7h20"/><path d="M5 7v3h14V7"/><path d="M8 10v9M16 10v9"/><path d="M6 19h4M14 19h4"/></svg>Section</button>
+              </div>
+              <div class="dock-modes">
+                <button id="drive" type="button" aria-pressed="false" title="Tour beneath the bridge from the middle road, river or railway · Escape to stop"
+                  ><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2"/><path d="M3.6 10.5h6.6M13.8 10.5h6.6M12 14v6.4"/></svg><span>Drive</span></button
+                ><button id="focus" type="button" aria-pressed="false" title="Hide the parameters and the top bar"
+                  ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>Focus</span></button>
+              </div>
+              <div class="dock-scene">
+                <div class="dock-h">Time of day</div>
+                <div class="time-control">
+                  <button id="timePlay" type="button" class="time-play" aria-pressed="true" title="Stop the time">❚❚</button
+                  ><input id="timeOfDay" type="range" min="0" max="24" step=".25" value="18" aria-label="Time of day" /><output
+                    id="timeLabel" for="timeOfDay">18:00</output>
+                </div>
+                <div class="dock-h">Display</div>
+                <div class="view-options">
+                  <label class="dock-switch"><input id="reveal" type="checkbox" role="switch" /><span class="sw" aria-hidden="true"></span><span>Reveal structure<small>Hide the deck to see the girders</small></span></label
+                  ><label class="dock-switch"><input name="showTraffic" form="parameters" type="checkbox" role="switch" /><span class="sw" aria-hidden="true"></span><span>Show traffic</span></label
+                  ><label class="dock-switch"><input name="movingTraffic" form="parameters" type="checkbox" role="switch" /><span class="sw" aria-hidden="true"></span><span>Moving traffic</span></label
+                  ><label class="dock-switch" title="Frame rate, CPU and GPU time, draw calls and quality tier"><input id="stats" type="checkbox" role="switch" /><span class="sw" aria-hidden="true"></span><span>Stats<small>Frame rate and draw calls</small></span></label>
+                </div>
+              </div>
             </div>
-          </details>
+          </div>
         </div>
         <p id="drive-status" class="drive-status" role="status" hidden></p>
         <p id="perf-hud" class="perf-hud" role="status" aria-live="off" hidden></p>
@@ -957,11 +983,23 @@
         <h2>BridgeSketch 3D</h2>
         <p>A quick visual tool for bridge concepts.</p>
         <p id="about-release"></p>
-        <p>By Anthony Chéruel</p>
+        <p>By Anthony Chéruel · open source under the MIT License</p>
+        <button type="button" id="sketchy-start" class="frog-play" title="Psst… you can also type « sketchy »"
+          ><img src="./sketchy.svg" alt="" width="44" height="44" /><span><b>Meet Sketchy</b
+          ><small>Our mascot has a secret bridge game</small></span></button
+        >
         <p class="hint">
           Starfield and grass species adapted from CK42BB/procedural-stars-threejs and procedural-grass-threejs (MIT);
           atmosphere after Hillaire 2020 (sebh/UnrealEngineSkyAtmosphere, MIT) and Bruneton 2008 (BSD); Preetham sky
           after Tw1ddle/Sky-Shader and the three.js Sky object (MIT); river details after Noniv/web-ocean (MIT).
+        </p>
+        <h3>Version 0.6.5</h3>
+        <p>
+          A clear view: the 3D view and the parameters use the whole window, the views, camera modes, time of day and
+          display switches gather in one drop-down in the top-right corner, Copy link and Export GLB moved to the File
+          menu and the model facts to the foot of the parameters. A GitHub link in the top bar, falling leaves and rain
+          no longer bunch up in the Plan and Elevation views, the time runs in the Fall river example, and the layout
+          holds on an unfolded Galaxy Z Fold in landscape. And Sketchy, our new mascot, has a secret game.
         </p>
         <h3>Version 0.6.4</h3>
         <p>

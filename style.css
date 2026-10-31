@@ -786,157 +786,7 @@ canvas {
   color: #c1d7e1;
   margin: 0;
 }
-.view-tools {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  display: flex;
-  gap: 2px;
-  padding: 4px;
-  border: 1px solid #65839870;
-  border-radius: 8px;
-  background: #102d41d9;
-  backdrop-filter: blur(10px);
-}
-.view-tools button {
-  background: none;
-  border: 0;
-  color: #d3e7eb;
-  padding: 7px 9px;
-  font-size: 0.79rem;
-}
-.view-tools button:hover {
-  background: #416274;
-}
-.view-tools [aria-pressed='true'] {
-  background: #bcebdd;
-  color: #103b41;
-}
-.time-control {
-  position: absolute;
-  left: 22px;
-  bottom: 96px;
-  width: 230px;
-  padding: 9px 12px;
-  background: #102d41db;
-  border: 1px solid #62829370;
-  border-radius: 6px;
-  color: #d4e5e9;
-}
-.time-control label {
-  display: flex;
-  justify-content: space-between;
-  color: inherit;
-  font-size: 0.76rem;
-}
-.time-control output {
-  font-variant-numeric: tabular-nums;
-  color: #9cdfcf;
-}
-.time-control input {
-  width: 100%;
-  margin: 8px 0 0;
-  accent-color: #48cfad;
-}
-.view-options {
-  position: absolute;
-  left: 22px;
-  bottom: 46px;
-  display: flex;
-  gap: 8px;
-}
-.view-options label {
-  background: #102d41db;
-  color: #d4e5e9;
-  border: 1px solid #62829370;
-  border-radius: 5px;
-  font-size: 0.76rem;
-  padding: 8px 10px;
-  display: flex;
-  align-items: center;
-}
-.view-options input {
-  width: 14px;
-  height: 14px;
-  accent-color: #48cfad;
-}
-.navigation-hint {
-  position: absolute;
-  bottom: 13px;
-  left: 24px;
-  color: #b8ccd6;
-  font-size: 0.72rem;
-  margin: 0;
-  pointer-events: none;
-}
-.export-tools {
-  position: absolute;
-  right: 20px;
-  bottom: 46px;
-  display: flex;
-  gap: 5px;
-  align-items: center;
-}
-.export-tools > button,
-.export-tools summary {
-  font-size: 0.75rem;
-  background: #102d41de;
-  color: #d5e9eb;
-  border: 1px solid #62829380;
-  border-radius: 5px;
-  padding: 8px 10px;
-  cursor: pointer;
-}
-.export-tools summary {
-  list-style: none;
-}
-#model-info[open] summary {
-  background: #bcebdd;
-  color: #103b41;
-}
-.stats {
-  position: absolute;
-  right: 0;
-  bottom: 44px;
-  background: #f7fafbf5;
-  color: var(--ink);
-  backdrop-filter: blur(12px);
-  width: 290px;
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 10px 40px #091d3840;
-  border: 1px solid #bbd1d8;
-}
-.stats > div {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--line);
-}
-.stats span {
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-.stats strong {
-  font-weight: 600;
-  font-size: 1.05rem;
-}
-.stats small {
-  font-size: 0.78rem;
-  font-weight: 400;
-}
-.stats p {
-  font-size: 0.72rem;
-  line-height: 1.4;
-  color: var(--muted);
-  margin: 12px 0 0;
-}
-.stats {
-  width: 330px;
-  max-height: max(220px, calc(100vh - 340px));
-  overflow-y: auto;
-}
+
 /* Road profile (0.6.2): chainage / elevation table and CSV export. 0.6.3: File menu dialog with X, Y. */
 #profile-dialog {
   width: min(680px, calc(100vw - 32px));
@@ -1012,26 +862,7 @@ canvas {
   font-weight: 600;
   color: #00655f;
 }
-#feedback {
-  position: absolute;
-  left: 20px;
-  bottom: 94px;
-  max-width: min(480px, calc(100% - 40px));
-  background: #f0faf6f5;
-  color: #1e504d;
-  padding: 12px 16px;
-  border: 1px solid #7bb4a5;
-  border-radius: 7px;
-  font-size: 0.86rem;
-  line-height: 1.5;
-  box-shadow: 0 6px 30px #102d4130;
-  z-index: 4;
-}
-#feedback.error {
-  background: #fff1e8;
-  color: #813e2a;
-  border-color: #bc8976;
-}
+
 #fatal {
   position: absolute;
   inset: 25%;
@@ -1069,26 +900,13 @@ dialog h2 {
   font-size: 1.4rem;
   border: 0;
 }
-body.focus-mode .sidebar {
-  display: none;
-}
-body.focus-mode .workspace {
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
-}
+
 @media (max-width: 1250px) {
   :root {
     --side-w: 330px;
     --gap: 10px;
   }
-  .view-tools {
-    top: 110px;
-    left: 20px;
-    right: auto;
-  }
-  .export-tools {
-    bottom: 88px;
-  }
+
   .view-heading h2 {
     font-size: 1.45rem;
   }
@@ -1126,14 +944,7 @@ body.focus-mode .workspace {
   .release-info small {
     font-size: 0.64rem;
   }
-  .view-options {
-    gap: 4px;
-    left: 15px;
-  }
-  .view-options label {
-    font-size: 0.7rem;
-    padding: 7px;
-  }
+
   .input-tabs button {
     font-size: 0.75rem;
   }
@@ -1143,26 +954,7 @@ body.focus-mode .workspace {
     scroll-behavior: auto !important;
   }
 }
-body.focus-mode .workspace {
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
-}
-.drive-status {
-  position: absolute;
-  top: 160px;
-  left: 24px;
-  background: #102d41e8;
-  color: #c6f8e6;
-  border: 1px solid #5d9e91;
-  padding: 9px 12px;
-  border-radius: 5px;
-  font-size: 0.75rem;
-  pointer-events: none;
-}
-.view-tools {
-  flex-wrap: wrap;
-  max-width: calc(100% - 40px);
-}
+
 .steel-custom {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1242,36 +1034,20 @@ body.focus-mode .workspace {
   accent-color: #007f78;
 }
 .section-view .view-heading,
-.section-view .view-heading p,
-.section-view .navigation-hint {
+.section-view .view-heading p {
   color: #17374b;
   text-shadow: none;
 }
 .section-view .eyebrow {
   color: #007f78;
 }
-.view-options {
-  flex-wrap: wrap;
-  max-width: calc(100% - 32px);
-}
-.view-options label {
-  white-space: nowrap;
-  flex-shrink: 0;
-}
+
 @media (max-width: 1250px) {
-  .export-tools {
-    bottom: 218px;
-  }
-  .time-control {
-    bottom: 133px;
-  }
   #sectionHost {
     padding-top: 150px;
   }
 }
-.section-view .export-tools {
-  display: none;
-}
+
 .section-toolbar button {
   width: 100%;
   margin-top: 7px;
@@ -1281,11 +1057,7 @@ body.focus-mode .workspace {
   font-size: 0.75rem;
   padding: 5px;
 }
-.section-view .time-control,
-.section-view .view-options,
-.section-view .navigation-hint {
-  display: none;
-}
+
 #viewport:not(.section-view) .view-heading {
   text-shadow:
     0 1px 2px #0b1f2ecc,
@@ -1344,53 +1116,8 @@ body.focus-mode .workspace {
 @media (prefers-reduced-motion: reduce) { .scene-loading img { animation: none; } }
 
 /* Stats overlay: frame rate, CPU / GPU time, draw calls, triangles and quality tier (bottom centre, 0.5.6). */
-.perf-hud {
-  position: absolute;
-  bottom: 9px;
-  left: 50%;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  z-index: 4;
-  margin: 0;
-  padding: 5px 10px;
-  border-radius: 6px;
-  background: #0b1f2ecc;
-  color: #cdeee4;
-  font: 600 11.5px/1.4 ui-monospace, 'Cascadia Mono', Consolas, monospace;
-  letter-spacing: 0.02em;
-  pointer-events: none;
-}
-.section-view .perf-hud {
-  display: none;
-}
-#viewport:has(#perf-hud:not([hidden])) .navigation-hint {
-  display: none;
-}
-.time-control label {
-  align-items: center;
-}
-.time-play {
-  min-width: 30px;
-  padding: 2px 8px;
-  border: 1px solid #62829370;
-  border-radius: 5px;
-  background: #0b1f2e;
-  color: #9cdfcf;
-  font-size: 0.72rem;
-  line-height: 1.4;
-  cursor: pointer;
-}
-.time-play[aria-pressed='false'] {
-  color: #d4e5e9;
-}
 
 /* 0.6.0 · camera icon on the snapshot button */
-#image .icon {
-  width: 16px;
-  height: 16px;
-  margin-right: 6px;
-  vertical-align: -3px;
-}
 
 /* 0.6.0 · Phones and small tablets: the 3D view on top (full width, fixed aspect), parameters below in the page
    flow; overlays become compact rows that scroll sideways instead of overlapping the model. */
@@ -1433,75 +1160,8 @@ body.focus-mode .workspace {
     margin: 2px 0;
   }
   .view-heading p,
-  .eyebrow,
-  .navigation-hint {
+  .eyebrow {
     display: none;
-  }
-  .view-tools,
-  .view-options,
-  .export-tools {
-    left: 8px;
-    right: 8px;
-    top: auto;
-    overflow-x: auto;
-    scrollbar-width: none;
-    flex-wrap: nowrap;
-  }
-  .view-tools::-webkit-scrollbar,
-  .view-options::-webkit-scrollbar,
-  .export-tools::-webkit-scrollbar {
-    display: none;
-  }
-  .view-tools {
-    bottom: 8px;
-    justify-content: space-between;
-  }
-  .view-tools button {
-    padding: 8px 9px;
-    flex: 0 0 auto;
-  }
-  .view-options {
-    bottom: 58px;
-    gap: 4px;
-  }
-  .view-options label {
-    flex: 0 0 auto;
-    padding: 7px 8px;
-    font-size: 0.72rem;
-  }
-  .export-tools {
-    bottom: 100px;
-    justify-content: flex-end;
-  }
-  .export-tools > button,
-  .export-tools summary {
-    flex: 0 0 auto;
-  }
-  #model-info {
-    display: none;
-  }
-  .time-control {
-    top: 8px;
-    right: 8px;
-    left: auto;
-    bottom: auto;
-    width: 140px;
-    padding: 6px 8px;
-  }
-  .time-control label {
-    font-size: 0.7rem;
-  }
-  .section-view .view-options,
-  .section-view .export-tools {
-    display: none;
-  }
-  .perf-hud {
-    bottom: 142px;
-  }
-  #feedback {
-    left: 8px;
-    right: 8px;
-    max-width: none;
   }
 }
 @media (max-height: 500px) and (orientation: landscape) {
@@ -1526,24 +1186,9 @@ body.focus-mode .workspace {
 .brand img { width: 24px; height: 24px; }
 .brand h1 { font-size: 1.12rem; letter-spacing: -0.4px; white-space: nowrap; }
 .brand small { display: none; }
-body.focus-mode .topbar, body.focus-mode .sidebar, body.focus-mode .view-heading,
-body.focus-mode .view-options, body.focus-mode .export-tools, body.focus-mode .navigation-hint,
-body.focus-mode .time-control, body.focus-mode .perf-hud, body.focus-mode .section-controls,
-body.focus-mode .view-tools > :not(#focus) { display: none; }
-body.focus-mode .workspace { height: 100dvh; min-height: 0; padding: 0; gap: 0; grid-template-columns: 1fr; grid-template-rows: 1fr; }
-body.focus-mode #viewport { height: 100dvh; min-height: 0; border: 0; border-radius: 0; }
-body.focus-mode .view-tools { top: 12px; right: 12px; left: auto; bottom: auto; }
 
 /* 0.6.1 · hover states on dark overlays and teal buttons (the generic light hover would hide their text). */
-.export-tools > button:hover:not(:disabled),
-.export-tools summary:hover,
-.view-options label:hover {
-  background: #1f4a62;
-  color: #fff;
-}
-.time-play:hover:not(:disabled) {
-  background: #1f4a62;
-}
+
 .section-toolbar button:hover:not(:disabled) {
   background: #006861;
   border-color: #006861;
@@ -1555,11 +1200,11 @@ body.focus-mode .view-tools { top: 12px; right: 12px; left: auto; bottom: auto; 
 /* 0.6.1 · touch targets, reduced motion */
 @media (pointer: coarse) {
   .sidebar input[type='text'],
-  .sidebar select,
-  .input-tabs button,
-  .menu-button,
-  .icon-button,
-  .menu-pop button {
+.sidebar select,
+.input-tabs button,
+.menu-button,
+.icon-button,
+.menu-pop button {
     min-height: 40px;
   }
   .input-group > summary {
@@ -1568,11 +1213,11 @@ body.focus-mode .view-tools { top: 12px; right: 12px; left: auto; bottom: auto; 
 }
 @media (prefers-reduced-motion: reduce) {
   .input-group > summary::before,
-  .menu-button .caret {
+.menu-button .caret {
     transition: none;
   }
   .qb-menu.open > .menu-pop,
-  .sidebar input.num-flash {
+.sidebar input.num-flash {
     animation: none;
   }
 }
@@ -1653,9 +1298,7 @@ body.panel-collapsed .panel-toggle {
 body.panel-collapsed .panel-toggle svg {
   transform: rotate(180deg);
 }
-body.focus-mode .panel-toggle {
-  display: none;
-}
+
 @media (max-width: 760px), (max-height: 500px) and (orientation: landscape) {
   .panel-toggle {
     display: none;
@@ -1698,4 +1341,547 @@ body.focus-mode .panel-toggle {
 }
 .elevation-dims .total {
   font-weight: 700;
+}
+
+/* 0.6.5 · Full-bleed workspace: the 3D view and the parameters panel use the whole window, no white frame. */
+.workspace {
+  padding: 0;
+  gap: 0;
+}
+.sidebar {
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+}
+#viewport {
+  border: 0;
+  border-radius: 0;
+}
+.panel-toggle {
+  top: 14px;
+  left: calc(var(--side-w) - 14px);
+}
+body.panel-collapsed .workspace {
+  padding-left: 0;
+}
+body.panel-collapsed .panel-toggle {
+  left: 10px;
+}
+.gh-link {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: #fff;
+  opacity: 0.82;
+}
+.gh-link:hover {
+  opacity: 1;
+  background: #ffffff1f;
+}
+/* Model info moved to the foot of the parameters panel. */
+.input-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+.model-facts {
+  display: flex;
+  gap: 12px;
+}
+.model-facts b {
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.model-facts small {
+  margin-left: 2px;
+  font-weight: 400;
+  color: var(--muted);
+}
+#sectionHost {
+  padding: 62px 16px 28px;
+}
+
+/* 0.6.5 · View dock (QuickerAtlas layers panel): a snapshot button and one drop-down for views, camera modes, time
+   of day and display switches, in the top-right corner. */
+.hud {
+  position: absolute;
+  z-index: 5;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.hud-btn {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid #ffffff2e;
+  border-radius: 9px;
+  background: #0f2a3dcc;
+  color: #e3f1f4;
+  backdrop-filter: blur(10px) saturate(1.2);
+  box-shadow: 0 4px 14px #04101d40;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.hud-btn:hover:not(:disabled) {
+  background: #173b52eb;
+  color: #fff;
+}
+.hud-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.hud-icon {
+  width: 36px;
+  padding: 0;
+  justify-content: center;
+}
+.dock {
+  position: relative;
+}
+.hud-btn .dock-layers {
+  fill: var(--mint);
+  stroke: none;
+}
+.dock-time {
+  padding-left: 8px;
+  border-left: 1px solid #ffffff2e;
+  color: #9cdfcf;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.dock-button .caret {
+  font-size: 0.7rem;
+  opacity: 0.7;
+  transition: transform 0.15s;
+}
+.dock.open .dock-button {
+  background: #bcebdd;
+  border-color: #bcebdd;
+  color: #103b41;
+}
+.dock.open .dock-layers {
+  fill: var(--teal-ink);
+}
+.dock.open .dock-time {
+  color: var(--teal-ink);
+  border-color: #103b4133;
+}
+.dock.open .caret {
+  transform: rotate(180deg);
+}
+.dock-panel {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: 300px;
+  max-height: min(600px, calc(100dvh - var(--topbar-h) - 70px));
+  overflow: auto;
+  scrollbar-width: thin;
+  padding: 10px 12px 8px;
+  background: #fffffff7;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px #04101d47;
+  animation: menu-in 0.12s ease-out;
+}
+.dock-h {
+  margin: 2px 2px 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.dock-views {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+.dock-views button,
+.dock-modes button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f6f9fb;
+  color: var(--ink);
+}
+.dock-views button {
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 2px 6px;
+  font-size: 0.72rem;
+}
+.dock-views svg,
+.dock-modes svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.dock-views button:hover:not(:disabled),
+.dock-modes button:hover:not(:disabled) {
+  background: #eef5f7;
+  color: var(--teal);
+}
+.dock-views [aria-pressed='true'],
+.dock-views [aria-pressed='true']:hover:not(:disabled) {
+  background: var(--mint-soft);
+  border-color: var(--teal);
+  color: var(--teal-ink);
+  box-shadow: inset 0 0 0 1px var(--teal);
+}
+.dock-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-top: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.dock-modes button {
+  padding: 6px 8px;
+  font-size: 0.78rem;
+}
+.dock-modes svg {
+  width: 17px;
+  height: 17px;
+}
+.dock-modes [aria-pressed='true'],
+.dock-modes [aria-pressed='true']:hover:not(:disabled) {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: #fff;
+}
+.dock-scene .dock-h {
+  margin-top: 10px;
+}
+.time-control {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px;
+}
+.time-control input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--teal);
+}
+.time-control output {
+  min-width: 3.2em;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--teal-ink);
+}
+.time-play {
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border-radius: 7px;
+  background: #f6f9fb;
+  font-size: 0.72rem;
+}
+.time-play[aria-pressed='true'] {
+  background: var(--mint-soft);
+  border-color: var(--teal);
+  color: var(--teal-ink);
+}
+.view-options {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.dock-switch {
+  position: relative;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-radius: 7px;
+  font-size: 0.8125rem;
+  line-height: 1.25;
+  cursor: pointer;
+}
+.dock-switch:hover {
+  background: #f3f7f9;
+}
+.dock-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+.dock-switch small {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.sw {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 8px;
+  background: #c3d0d9;
+  transition: background 0.15s;
+}
+.sw::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px #0004;
+  transition: transform 0.15s;
+}
+.dock-switch input:checked + .sw {
+  background: var(--teal);
+}
+.dock-switch input:checked + .sw::after {
+  transform: translateX(12px);
+}
+.dock-switch input:focus-visible + .sw {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+}
+.section-view .dock-scene {
+  display: none;
+}
+.section-view .dock-modes {
+  padding-bottom: 2px;
+  border-bottom: 0;
+}
+
+/* Messages along the edges of the view. */
+.navigation-hint {
+  position: absolute;
+  left: 14px;
+  bottom: 10px;
+  margin: 0;
+  color: #d6e6ec;
+  font-size: 0.72rem;
+  text-shadow: 0 1px 3px #0b1f2e;
+  pointer-events: none;
+}
+.section-view .navigation-hint,
+#viewport:has(#perf-hud:not([hidden])) .navigation-hint {
+  display: none;
+}
+.drive-status {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 7px 12px;
+  border: 1px solid #5d9e91;
+  border-radius: 7px;
+  background: #102d41e8;
+  color: #c6f8e6;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.perf-hud {
+  position: absolute;
+  z-index: 4;
+  bottom: 9px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: #0b1f2ecc;
+  color: #cdeee4;
+  font: 600 11.5px/1.4 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.section-view .perf-hud {
+  display: none;
+}
+#feedback {
+  position: absolute;
+  z-index: 6;
+  left: 14px;
+  bottom: 34px;
+  max-width: min(480px, calc(100% - 28px));
+  padding: 12px 16px;
+  border: 1px solid #7bb4a5;
+  border-radius: 8px;
+  background: #f0faf6f5;
+  color: #1e504d;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  box-shadow: 0 6px 30px #102d4130;
+}
+#feedback.error {
+  background: #fff1e8;
+  color: #813e2a;
+  border-color: #bc8976;
+}
+
+/* Focus: the scene takes the whole window; the dock stays, since Focus is in it. */
+body.focus-mode .topbar,
+body.focus-mode .sidebar,
+body.focus-mode .panel-toggle,
+body.focus-mode .navigation-hint {
+  display: none;
+}
+body.focus-mode .workspace {
+  height: 100dvh;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 1fr;
+}
+body.focus-mode #viewport {
+  height: 100dvh;
+}
+body.focus-mode .dock-panel {
+  max-height: calc(100dvh - 70px);
+}
+
+/* Phones and foldables in landscape: the same dock, a little larger under a finger. */
+@media (max-width: 760px), (max-height: 500px) and (orientation: landscape) {
+  .sidebar {
+    border-right: 0;
+    border-top: 1px solid var(--line);
+  }
+  .hud {
+    top: 8px;
+    right: 8px;
+  }
+  .dock-panel {
+    width: min(300px, calc(100vw - 16px));
+    max-height: calc(min(66svh, 128vw) - 56px);
+  }
+  .navigation-hint {
+    display: none;
+  }
+  #feedback {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    max-width: none;
+  }
+  body.focus-mode #viewport {
+    height: 100svh;
+  }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .dock-panel {
+    max-height: calc(100svh - 120px);
+  }
+}
+@media (pointer: coarse) {
+  .hud-btn {
+    height: 42px;
+  }
+  .hud-icon {
+    width: 42px;
+  }
+  .dock-panel {
+    top: 50px;
+  }
+  .dock-views button {
+    padding: 9px 2px 8px;
+  }
+  .dock-modes button {
+    min-height: 40px;
+  }
+  .dock-switch {
+    padding: 9px 4px;
+  }
+  .time-control {
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+  }
+  .time-play {
+    width: 38px;
+    height: 36px;
+  }
+}
+
+/* 0.6.5 · Sketchy's Bridge Hop: the game takes the whole window (its HUD lives in modules/sketchy/sketchy.css). */
+body.sketchy-game .topbar,
+body.sketchy-game .sidebar,
+body.sketchy-game .panel-toggle,
+body.sketchy-game .hud,
+body.sketchy-game .navigation-hint,
+body.sketchy-game .elevation-dims,
+body.sketchy-game #restore-bar {
+  display: none;
+}
+body.sketchy-game .workspace {
+  height: 100dvh;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 1fr;
+}
+body.sketchy-game #viewport {
+  height: 100dvh;
+}
+body.sketchy-game #canvasHost {
+  touch-action: none;
+}
+.frog-play {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 4px 0 14px;
+  padding: 6px 12px 6px 6px;
+  border: 1px solid #b9e3a3;
+  border-radius: 12px;
+  background: linear-gradient(160deg, #f1fbe9, #e1f5d3);
+  text-align: left;
+}
+.frog-play:hover:not(:disabled) {
+  background: linear-gradient(160deg, #e6f8d9, #d2efbf);
+}
+.frog-play img {
+  flex: none;
+  transition: transform 0.2s;
+}
+.frog-play:hover img {
+  transform: translateY(-3px) rotate(-6deg);
+}
+.frog-play b {
+  display: block;
+  color: #2f7d26;
+}
+.frog-play small {
+  display: block;
+  font-weight: 400;
+  color: var(--muted);
 }

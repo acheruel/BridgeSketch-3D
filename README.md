@@ -2,7 +2,7 @@
 
 **Try it online:** [BridgeSketch 3D on GitHub Pages](https://acheruel.github.io/BridgeSketch-3D/)
 
-**A quick visual tool for bridge concepts** · Version 0.6.4 · 26 October 2026 · Anthony Chéruel
+**A quick visual tool for bridge concepts** · Version 0.6.5 · 31 October 2026 · Anthony Chéruel
 
 BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a span arrangement, deck, supports and site, then inspect the result from above, below or along the obstacle being crossed. It runs in the browser from static files, with no account, backend or build step.
 
@@ -18,6 +18,16 @@ BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a
 - **Parameters:** collapsible sections and formulas in numeric fields, such as `=12*3`.
 - **History:** undo and redo with Ctrl+Z / Ctrl+Y.
 - **Files and export:** save and open JSON, share link, PNG snapshot and GLB export.
+
+## What's new in 0.6.5
+
+- **A clear view:** the 3D view and the parameters panel use the whole window, without a white frame. Views (3D, Plan, Elevation, Section), Drive, Focus, the time of day and the display switches (Reveal structure, traffic, Stats) share one drop-down in the top-right corner, next to the snapshot button. **Copy link** and **Export GLB** moved to the File menu; the model facts (length, deck area, triangles) sit at the foot of the parameters panel. The Fit button is gone.
+- **GitHub:** a link to the repository in the top bar.
+- **Fixes:** falling leaves, rain and snow no longer gather in one odd square in the Plan and Elevation views (they are off in those drawings); the time of day runs in the Fall river example.
+- **Foldables:** the layout holds on an unfolded Galaxy Z Fold 8 in landscape (about 816 × 536 CSS px in Chrome) and on phones, with larger touch targets.
+- **Sketchy:** meet the BridgeSketch mascot, a frog in a hard hat. He has a secret mini-game, *Sketchy's Bridge Hop*: open **About › Meet Sketchy** (or type `sketchy`, or add `?sketchy` to the address). Arcade: hop across the traffic with WASD on the bridge and its approaches, squeeze between two cars on a lane line, leap over them with Space, land on a roof to surf, catch flies. The power fly turns Sketchy gold for 5 s and bonks every vehicle he touches into the sky; the blue fly slows the traffic down. Don't camp on a sidewalk: the heron is watching. Free roam: hop anywhere on the site and swim in the river (hold Space to swim fast). Procedural music and sound (M to mute).
+
+![Sketchy's Bridge Hop, the secret mini-game](screenshots/sketchy.webp)
 
 ## What's new in 0.6.4
 
@@ -63,8 +73,8 @@ BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a
 
 ## Controls
 
-- Drag to orbit, right-drag to pan and scroll to zoom; **Fit** reframes the bridge.
-- Switch between **3D**, **Plan**, **Elevation** and **Section** views. Section views can be saved as SVG.
+- Drag to orbit, right-drag to pan and scroll to zoom.
+- Switch between **3D**, **Plan**, **Elevation** and **Section** views from the drop-down in the top-right corner. Section views can be saved as SVG.
 - The **Time of day** slider covers 00:00–24:00, with golden hour around 19:00.
 - Curated concepts sit at the top of the parameter panel. Choosing one resets every parameter.
 - **Drive** travels along the road, railway or river beneath a middle span; **Escape** returns.

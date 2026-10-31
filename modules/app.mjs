@@ -222,8 +222,28 @@ function initWorkspace() {
   $('focus').onclick = () => {
     const focus = document.body.classList.toggle('focus-mode');
     $('focus').setAttribute('aria-pressed', focus);
-    $('focus').textContent = focus ? 'Parameters' : 'Focus';
+    $('focus').querySelector('span').textContent = focus ? 'Parameters' : 'Focus';
   };
+  // 0.6.5: the view dock (QuickerAtlas « Couches »): opens on click, closes on a click outside or Escape.
+  const dock = $('dock'),
+    dockOpen = open => {
+      $('dock-panel').hidden = !open;
+      $('dock-button').setAttribute('aria-expanded', open);
+      dock.classList.toggle('open', open);
+    };
+  $('dock-button').onclick = () => dockOpen($('dock-panel').hidden);
+  document.addEventListener('pointerdown', e => {
+    if (!$('dock-panel').hidden && !dock.contains(e.target)) dockOpen(false);
+  });
+  dock.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !$('dock-panel').hidden) {
+      e.stopPropagation();
+      dockOpen(false);
+      $('dock-button').focus();
+    }
+  });
+  // A new view closes the dock so the result shows at once; the switches keep it open.
+  dock.querySelectorAll('[data-view], #drive').forEach(b => b.addEventListener('click', () => dockOpen(false)));
   $('activeSpan').onchange = selectSpan;
   // Formula-capable numeric fields, File menu, keyboard shortcuts and the undo / redo buttons.
   setupNumericInputs(form, {
@@ -618,8 +638,10 @@ function applyTimeOfDay(hour, flowing = false) {
   renderer.toneMappingExposure = 0.9 + 0.28 * daylight - 0.13 * golden;
   $('viewport').style.setProperty('--night-factor', `${((1 - daylight) * 100).toFixed(1)}%`);
   $('timeOfDay').value = hour;
-  $('timeLabel').textContent =
-    String(Math.floor(hour)).padStart(2, '0') + ':' + String(Math.round((hour % 1) * 60)).padStart(2, '0');
+  // 0.6.5: whole minutes first, so 14:59.7 reads 15:00 rather than 14:60.
+  const minutes = Math.round(hour * 60) % 1440;
+  $('timeLabel').textContent = $('dock-time').textContent =
+    String(Math.floor(minutes / 60)).padStart(2, '0') + ':' + String(minutes % 60).padStart(2, '0');
   needsRender = true;
 }
 // Section view zoom: wheel zooms about the pointer, drag pans, double-click resets (like the 3D views).
@@ -1119,6 +1141,10 @@ function rebuild(raw, { resetCamera = false, refresh = false, noHistory = false,
       needsRender = true;
     },
     update: raw => update(raw, { refresh: true }),
+    sketchy: () => startGame(),
+    get game() {
+      return game;
+    },
     getStats: () => ({
       triangles,
       updateMs,
@@ -1190,13 +1216,14 @@ function fit(mode = 'perspective') {
     Object.assign(sectionZoom, { k: 1, cx: null, cy: null });
     renderSection();
     renderElevationDims();
-    document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === mode));
+    showView(mode);
     return;
   }
   model.setting.visible = mode !== 'elevation';
   shadowDirty = true;
   view = mode;
   camera = mode === 'perspective' ? perspectiveCamera : orthoCamera;
+  weather.hide(mode !== 'perspective');
   controls.object = camera;
   controls.enableRotate = mode === 'perspective';
   camera.up.set(0, 1, 0);
@@ -1218,10 +1245,10 @@ function fit(mode = 'perspective') {
   camera.updateMatrixWorld();
   const right = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 0),
     up = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 1),
-    // Room left by the overlays: desktop toolbars at the bottom, compact rows on phones (0.6.0).
+    // Room left by the overlays: since 0.6.5 only the view dock, in the top-right corner.
     compact = matchMedia('(max-width: 760px), (max-height: 500px) and (orientation: landscape)').matches,
-    uiV = compact ? 150 : 165,
-    uiH = compact ? 16 : 70,
+    uiV = compact ? 52 : 64,
+    uiH = 16,
     tanV = Math.tan((18 * Math.PI) / 180) * Math.max(0.4, (height - uiV) / height),
     tanH = (Math.tan((18 * Math.PI) / 180) * aspect * (width - uiH)) / width;
   let distance = 20,
@@ -1248,7 +1275,12 @@ function fit(mode = 'perspective') {
   camera.updateProjectionMatrix();
   controls.update();
   needsRender = true;
+  showView(mode);
+}
+// Pressed view button and the dock label (0.6.5).
+function showView(mode) {
   document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === mode));
+  $('dock-view').textContent = { perspective: '3D', plan: 'Plan', elevation: 'Elevation', section: 'Section' }[mode];
 }
 function captureCamera() {
   return { position: camera.position.toArray(), target: controls.target.toArray(), view, zoom: camera.zoom };
@@ -1284,7 +1316,7 @@ function stopDriving(restore = true) {
   const traffic = model.setting.children.find(o => o.name === 'Traffic');
   if (traffic) traffic.visible = true;
   applyReveal();
-  $('drive').textContent = 'Drive';
+  $('drive').querySelector('span').textContent = 'Drive';
   $('drive').setAttribute('aria-pressed', 'false');
   $('drive-status').hidden = true;
   if (restore) restoreCamera(saved);
@@ -1307,7 +1339,7 @@ function startDriving() {
   const traffic = model.setting.children.find(o => o.name === 'Traffic');
   if (traffic) traffic.visible = false;
   applyReveal();
-  $('drive').textContent = 'Stop';
+  $('drive').querySelector('span').textContent = 'Stop driving';
   $('drive').setAttribute('aria-pressed', 'true');
   $('drive-status').hidden = false;
   driveFrame(0);
@@ -1572,6 +1604,7 @@ async function boot() {
     }
     if (fly) flyFrame(time);
     else if (driving) driveFrame(dt);
+    else if (game) game.frame(dt);
     else controls.update(dt);
     const moving = config.movingTraffic && config.showTraffic;
     // Moving vehicles keep their contact shadows but cast no sun shadow, so the shadow map stays static
@@ -1623,7 +1656,7 @@ async function boot() {
     const key = camera.matrixWorld.elements.map(v => v.toFixed(3)).join(),
       cameraMoved = key !== cameraKey;
     cameraKey = key;
-    const interactive = needsRender || fly || driving || controls.autoRotate || cameraMoved || time - lastInteraction < 1500;
+    const interactive = needsRender || fly || driving || game || controls.autoRotate || cameraMoved || time - lastInteraction < 1500;
     // Ambient-only animation is capped at 30 fps.
     const due = interactive || time - lastFrameAt >= 1000 / 30 - 2;
     if ((needsRender || animated) && due) {
@@ -1637,7 +1670,7 @@ async function boot() {
       const start = performance.now(),
         timing = $('perf-hud').hidden ? null : beginGpuTimer();
       renderer.info.reset();
-      if (cameraMoved || frameCount % 2 === 0 || !reflection.texture) renderReflection();
+      if (game ? frameCount % 3 === 0 : cameraMoved || frameCount % 2 === 0 || !reflection.texture) renderReflection();
       renderElevationDims();
       draw();
       timing?.end();
@@ -1671,9 +1704,10 @@ async function boot() {
   if (intro) {
     requestAnimationFrame(() => requestAnimationFrame(() => intro.ready()));
     intro.exited.then(() => {
-      if (!pendingCamera && view === 'perspective' && !matchMedia('(prefers-reduced-motion: reduce)').matches) startFly();
+      if (new URLSearchParams(location.search).has('sketchy')) startGame();
+      else if (!pendingCamera && view === 'perspective' && !matchMedia('(prefers-reduced-motion: reduce)').matches) startFly();
     });
-  }
+  } else if (new URLSearchParams(location.search).has('sketchy')) startGame();
 }
 // GPU time of one frame (EXT_disjoint_timer_query_webgl2), read back a few frames later without stalling.
 function beginGpuTimer() {
@@ -1721,7 +1755,7 @@ function trackPerformance(time, animating) {
       `${q[0].toUpperCase() + q.slice(1)}${config.renderQuality === 'auto' ? ' (auto)' : ''}`;
   }
   // Auto: below 24 fps for 4 s in a row (after the first 6 s) → one tier down, rebuilt once.
-  if (config.renderQuality !== 'auto' || time - bootAt < 6000 || fly) return;
+  if (config.renderQuality !== 'auto' || time - bootAt < 6000 || fly || game) return;
   if (perf.fps >= 24) perf.lowSince = null;
   else if (perf.lowSince === null) perf.lowSince = time;
   else if (time - perf.lowSince > 4000) {
@@ -1732,6 +1766,73 @@ function trackPerformance(time, animating) {
     notify(`Auto quality: ${Math.round(perf.fps)} fps measured, switched to ${next[0].toUpperCase() + next.slice(1)}.`);
   }
 }
+// 0.6.5: Sketchy's Bridge Hop, the secret Frogger-style game (modules/sketchy/, loaded on demand). The game drives the
+// camera, Sketchy and its own deck traffic; the app keeps rendering the scene around it, in Balanced quality at most.
+let game = null,
+  gameSaved = null;
+async function startGame() {
+  if (game || gameSaved || !model) return;
+  if ($('about').open) $('about').close();
+  stopDriving(false);
+  if (fly) {
+    fly = null;
+    controls.enabled = true;
+  }
+  gameSaved = { camera: captureCamera(), quality: config.renderQuality, preset: $('preset').value };
+  document.body.classList.add('sketchy-game');
+  try {
+    if (effectiveQuality(config.renderQuality) === 'high')
+      await update({ ...config, renderQuality: 'balanced' }, { heavy: true, noHistory: true });
+    if (view !== 'perspective') fit('perspective');
+    const { startSketchy } = await import('./sketchy/game.mjs');
+    controls.enabled = false;
+    perspectiveCamera.fov = 55;
+    perspectiveCamera.far = 1600;
+    perspectiveCamera.updateProjectionMatrix();
+    game = startSketchy({
+      scene,
+      camera: perspectiveCamera,
+      canvas: renderer.domElement,
+      host: $('viewport'),
+      config,
+      model,
+      materials,
+      render: () => (needsRender = true),
+      exit: stopGame,
+    });
+    // The deck vehicles left the scene: redraw the static sun shadows without them.
+    shadowDirty = true;
+  } catch (e) {
+    notify(`The game could not start: ${e.message}`, true);
+    await stopGame();
+  }
+}
+async function stopGame() {
+  if (!gameSaved) return;
+  const saved = gameSaved;
+  game?.dispose();
+  game = null;
+  document.body.classList.remove('sketchy-game');
+  perspectiveCamera.fov = 36;
+  perspectiveCamera.far = 5000;
+  perspectiveCamera.updateProjectionMatrix();
+  controls.enabled = true;
+  shadowDirty = true;
+  if (config.renderQuality !== saved.quality)
+    await update({ ...config, renderQuality: saved.quality }, { heavy: true, noHistory: true });
+  restoreCamera(saved.camera);
+  $('preset').value = saved.preset;
+  gameSaved = null;
+  needsRender = true;
+}
+// Secret ways in: Sketchy in the About dialog, typing « sketchy » (or « frog »), or ?sketchy in the address.
+let typed = '';
+window.addEventListener('keydown', e => {
+  if (game || e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.('input, textarea, select')) return;
+  typed = (typed + e.key.toLowerCase()).slice(-7);
+  if (typed.endsWith('sketchy') || typed.endsWith('frog')) startGame();
+});
+$('sketchy-start').onclick = startGame;
 // Camera fly-in after the intro: from a high, wide, rotated view down to the fitted view (1.8 s, ease-out).
 let fly = null;
 function startFly() {
@@ -1884,7 +1985,6 @@ document.querySelectorAll('[data-view]').forEach(b =>
     fit(b.dataset.view);
   }),
 );
-$('fit').onclick = () => fit(view);
 $('stats').onchange = () => {
   $('perf-hud').hidden = !$('stats').checked;
   $('perf-hud').textContent = 'Measuring…';
@@ -2078,9 +2178,10 @@ $('image').onclick = async () => {
   }
 };
 $('export-glb').onclick = async () => {
-  const button = $('export-glb');
+  const button = $('export-glb'),
+    label = button.querySelector('b');
   button.disabled = true;
-  button.textContent = 'Exporting…';
+  label.textContent = 'Exporting…';
   let waterMaterial;
   try {
     const { GLTFExporter } = await import('../vendor/GLTFExporter.js');
@@ -2104,7 +2205,7 @@ $('export-glb').onclick = async () => {
   } finally {
     waterMaterial?.dispose();
     button.disabled = false;
-    button.textContent = 'Export GLB';
+    label.textContent = 'Export GLB';
   }
 };
 function registerTools() {

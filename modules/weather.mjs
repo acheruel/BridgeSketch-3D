@@ -129,17 +129,27 @@ void main(){
   rain.name = 'Rain';
   snow.name = 'Snow';
   leaves.name = 'Falling leaves';
-  let mode = 'clear';
+  let mode = 'clear',
+    // 0.6.5: off in the Plan and Elevation views. The box follows the camera, and an orthographic camera stands
+    // hundreds of metres away, so the particles gathered in one odd square far from the bridge.
+    hidden = false;
+  const show = () => {
+    rain.visible = !hidden && mode === 'rain';
+    snow.visible = !hidden && mode === 'snow';
+    leaves.visible = !hidden && mode === 'leaves';
+  };
   return {
     objects: [rain, snow, leaves],
     get active() {
-      return mode !== 'clear';
+      return mode !== 'clear' && !hidden;
+    },
+    hide(on) {
+      hidden = on;
+      show();
     },
     set(next, daylight = 1) {
       mode = next;
-      rain.visible = mode === 'rain';
-      snow.visible = mode === 'snow';
-      leaves.visible = mode === 'leaves';
+      show();
       uniforms.opacity.value = mode === 'rain' ? 0.55 + 0.4 * daylight : mode === 'leaves' ? 1 : 0.9;
       uniforms.light.value = 0.25 + 0.75 * daylight;
     },

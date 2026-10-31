@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <title>Sketchy, the BridgeSketch 3D frog</title>
+  <defs>
+    <radialGradient id="skin" cx=".42" cy=".3" r=".8">
+      <stop offset="0" stop-color="#9be86c"/>
+      <stop offset=".55" stop-color="#62c23d"/>
+      <stop offset="1" stop-color="#3f9a2a"/>
+    </radialGradient>
+    <radialGradient id="hat" cx=".4" cy=".25" r=".9">
+      <stop offset="0" stop-color="#ffe27a"/>
+      <stop offset=".6" stop-color="#ffc21a"/>
+      <stop offset="1" stop-color="#e09a00"/>
+    </radialGradient>
+    <radialGradient id="eye" cx=".4" cy=".35" r=".7">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#e3ecef"/>
+    </radialGradient>
+  </defs>
+  <!-- feet -->
+  <ellipse cx="30" cy="112" rx="15" ry="6" fill="#4ea832"/>
+  <ellipse cx="98" cy="112" rx="15" ry="6" fill="#4ea832"/>
+  <!-- body -->
+  <path d="M64 46c30 0 49 17 49 40 0 19-19 30-49 30S15 105 15 86c0-23 19-40 49-40Z" fill="url(#skin)"/>
+  <ellipse cx="64" cy="100" rx="31" ry="15" fill="#f4efc2"/>
+  <!-- hands -->
+  <ellipse cx="40" cy="112" rx="9" ry="4.5" fill="#86d957"/>
+  <ellipse cx="88" cy="112" rx="9" ry="4.5" fill="#86d957"/>
+  <!-- hard hat behind the eyes -->
+  <path d="M42 46c0-14 10-22 22-22s22 8 22 22Z" fill="url(#hat)"/>
+  <path d="M42 41h44v5H42Z" fill="#102d41"/>
+  <path d="M61 25h6v17h-6Z" fill="#f0a800" opacity=".75"/>
+  <ellipse cx="64" cy="46.5" rx="27" ry="4" fill="#ffc21a"/>
+  <!-- eyes -->
+  <circle cx="40" cy="50" r="18" fill="url(#skin)"/>
+  <circle cx="88" cy="50" r="18" fill="url(#skin)"/>
+  <circle cx="40" cy="51" r="13.5" fill="url(#eye)"/>
+  <circle cx="88" cy="51" r="13.5" fill="url(#eye)"/>
+  <path d="M28.5 42a13.5 13.5 0 0 1 23 0c-7-2.5-16-2.5-23 0Z" fill="#4ea832"/>
+  <path d="M76.5 42a13.5 13.5 0 0 1 23 0c-7-2.5-16-2.5-23 0Z" fill="#4ea832"/>
+  <circle cx="42" cy="53" r="8" fill="#0d1114"/>
+  <circle cx="86" cy="53" r="8" fill="#0d1114"/>
+  <circle cx="39" cy="50" r="3" fill="#fff"/>
+  <circle cx="83" cy="50" r="3" fill="#fff"/>
+  <circle cx="45" cy="56.5" r="1.4" fill="#fff"/>
+  <circle cx="89" cy="56.5" r="1.4" fill="#fff"/>
+  <!-- face -->
+  <circle cx="58" cy="70" r="1.8" fill="#2a1214"/>
+  <circle cx="70" cy="70" r="1.8" fill="#2a1214"/>
+  <ellipse cx="33" cy="80" rx="7" ry="4.5" fill="#ff7f98" opacity=".75"/>
+  <ellipse cx="95" cy="80" rx="7" ry="4.5" fill="#ff7f98" opacity=".75"/>
+  <path d="M38 78c8 11 44 11 52 0" fill="none" stroke="#3a1618" stroke-width="3.6" stroke-linecap="round"/>
+  <path d="M60 84.6c1.5 4 6.5 4 8 0Z" fill="#ff6f8e"/>
+</svg>

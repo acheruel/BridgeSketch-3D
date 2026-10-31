@@ -1,0 +1,608 @@
+/* BridgeSketch 3D · Sketchy's Bridge Hop (0.6.5): HUD, menu and touch pad over the 3D view. */
+.sk {
+  --sk-green: #62c23d;
+  --sk-deep: #0f2a3d;
+  --sk-yellow: #ffc21a;
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  color: #fff;
+  user-select: none;
+}
+.sk button {
+  pointer-events: auto;
+  font: inherit;
+}
+.sk-top {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.sk-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 16px 6px 6px;
+  border-radius: 16px;
+  background: #0f2a3dd9;
+  border: 1px solid #ffffff2b;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px #04101d4d;
+}
+.sk-face {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: radial-gradient(circle at 50% 35%, #2f6b52, #133246);
+}
+.sk-name b {
+  display: block;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+}
+.sk-name small,
+.sk-stat small {
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9cdfcf;
+}
+.sk-stat b {
+  display: block;
+  min-width: 3.4ch;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+.sk-stat:nth-of-type(2) b {
+  color: var(--sk-yellow);
+}
+.sk.roam .sk-arcade {
+  display: none;
+}
+.sk-tools {
+  display: flex;
+  gap: 6px;
+}
+.sk-btn {
+  width: 40px;
+  height: 40px;
+  border: 1px solid #ffffff2e;
+  border-radius: 11px;
+  background: #0f2a3dd9;
+  color: #fff;
+  font-size: 0.95rem;
+  padding: 0;
+  backdrop-filter: blur(10px);
+}
+.sk-btn:hover {
+  background: #1d4a63;
+}
+.sk-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sk-help {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #0b1f2eb3;
+  font-size: 0.74rem;
+  color: #d8ecef;
+  white-space: nowrap;
+}
+
+/* Score popups float up from Sketchy. */
+.sk-pops {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.sk-pop {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-weight: 800;
+  font-size: 1.15rem;
+  white-space: nowrap;
+  color: #fff;
+  -webkit-text-stroke: 4px #0f2a3d;
+  paint-order: stroke fill;
+  animation: sk-float 1.3s ease-out forwards;
+}
+.sk-pop.big {
+  font-size: 1.5rem;
+  color: var(--sk-yellow);
+}
+.sk-pop.gold {
+  font-size: 1.45rem;
+  color: #ffe066;
+}
+.sk-pop.fly {
+  color: #b8ffcf;
+}
+@keyframes sk-float {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -30%) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -70%) scale(1.12);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -260%) scale(1);
+  }
+}
+
+/* Centre banners: Ready, 3-2-1, Splat!, Rush hour. */
+.sk-banner {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  animation: sk-bang 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+.sk-banner b {
+  display: block;
+  font-size: clamp(2.4rem, 7vw, 4.6rem);
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  color: #fff;
+  -webkit-text-stroke: 7px #0f2a3d;
+  paint-order: stroke fill;
+  text-shadow: 0 6px 0 #0f2a3d55;
+}
+.sk-banner small {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #0f2a3dd9;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.sk-banner.hit b {
+  color: #ff6f8e;
+}
+.sk-banner.go b,
+.sk-banner.ready b {
+  color: #9ef07a;
+}
+.sk-banner.level b {
+  color: var(--sk-yellow);
+}
+.sk-banner.count b {
+  font-size: clamp(3rem, 10vw, 6rem);
+}
+@keyframes sk-bang {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4) rotate(-6deg);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) rotate(0);
+  }
+}
+
+/* Heron warning. */
+.sk-warn {
+  position: absolute;
+  left: 50%;
+  bottom: 54px;
+  transform: translateX(-50%);
+  min-width: 230px;
+  padding: 8px 14px 10px;
+  border-radius: 12px;
+  background: #5a1420e6;
+  border: 1px solid #ff8fa3;
+  text-align: center;
+  animation: sk-shake 0.3s infinite;
+}
+.sk-warn b {
+  display: block;
+  font-size: 0.9rem;
+}
+.sk-warn-bar {
+  display: block;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 3px;
+  background: #ffffff33;
+  overflow: hidden;
+}
+.sk-warn-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #ff8fa3;
+}
+@keyframes sk-shake {
+  50% {
+    transform: translateX(calc(-50% + 2px));
+  }
+}
+
+/* Leapfrog cooldown meter. */
+.sk-leap {
+  --k: 1;
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(var(--sk-green) calc(var(--k) * 360deg), #ffffff26 0);
+  opacity: 0.85;
+}
+.sk-leap i {
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: #0f2a3d;
+}
+.sk-leap span {
+  position: relative;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.sk-leap.ready {
+  box-shadow: 0 0 0 3px #9ef07a66;
+}
+
+/* Touch pad (coarse pointers only). */
+.sk-pad {
+  display: none;
+}
+@media (pointer: coarse) {
+  .sk-help,
+  .sk-leap {
+    display: none;
+  }
+  .sk-pad {
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 14px;
+    display: grid;
+    grid-template-columns: repeat(3, 54px) 1fr 84px;
+    grid-template-rows: 54px 54px;
+    gap: 6px;
+    pointer-events: none;
+  }
+  .sk-pad button {
+    border: 1px solid #ffffff3d;
+    border-radius: 14px;
+    background: #0f2a3dc2;
+    color: #fff;
+    font-size: 1.2rem;
+    backdrop-filter: blur(8px);
+  }
+  .sk-pad button:active {
+    background: var(--sk-green);
+  }
+  .sk-pad [data-dir='0,1'] {
+    grid-area: 1 / 2;
+  }
+  .sk-pad [data-dir='-1,0'] {
+    grid-area: 2 / 1;
+  }
+  .sk-pad [data-dir='1,0'] {
+    grid-area: 2 / 3;
+  }
+  .sk-pad [data-dir='0,-1'] {
+    grid-area: 2 / 2;
+  }
+  .sk-pad .sk-pad-leap {
+    grid-area: 1 / 5 / 3 / 6;
+    border-radius: 50%;
+    align-self: end;
+    height: 84px;
+    font-size: 0.9rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    background: #2f7d26d9;
+  }
+}
+
+/* Start and pause menu. */
+.sk-menu {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: radial-gradient(ellipse at 50% 40%, #0f2a3d66, #04101dcc);
+  pointer-events: auto;
+}
+.sk-menu[hidden] {
+  display: none;
+}
+.sk-menu-card {
+  width: min(470px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  padding: 18px 22px 16px;
+  border-radius: 22px;
+  background: linear-gradient(170deg, #173e55, #0f2a3d 60%);
+  border: 1px solid #ffffff2b;
+  box-shadow: 0 30px 80px #000a;
+  text-align: center;
+}
+.sk-hero {
+  width: 132px;
+  height: 132px;
+  margin-top: -6px;
+  animation: sk-bob 1.6s ease-in-out infinite;
+}
+@keyframes sk-bob {
+  50% {
+    transform: translateY(-8px) rotate(-3deg);
+  }
+}
+.sk-menu h2 {
+  margin: 2px 0 4px;
+  font-size: 1.9rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+.sk-menu h2 span {
+  color: #9ef07a;
+}
+.sk-tag {
+  margin: 0 0 14px;
+  color: #b5cbd6;
+  font-size: 0.86rem;
+}
+.sk-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.sk-modes button {
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid #ffffff2b;
+  background: #ffffff12;
+  color: #fff;
+  text-align: left;
+}
+.sk-modes button:first-child {
+  background: linear-gradient(160deg, #62c23d, #2f7d26);
+  border-color: #9ef07a;
+}
+.sk-modes button:hover {
+  filter: brightness(1.12);
+}
+.sk-modes b {
+  display: block;
+  font-size: 1.05rem;
+}
+.sk-modes small {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: #e3f1f4;
+}
+.sk-resume {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid #ffc21a;
+  background: #ffc21a;
+  color: #0f2a3d;
+  font-weight: 800;
+}
+.sk-resume kbd {
+  margin-left: 6px;
+  font-size: 0.7rem;
+}
+.sk-keys {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  margin: 14px 0 10px;
+  font-size: 0.76rem;
+  color: #b5cbd6;
+}
+.sk-keys kbd,
+.sk-resume kbd {
+  display: inline-block;
+  min-width: 1.7em;
+  margin: 0 1px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  border: 1px solid #ffffff40;
+  border-bottom-width: 2px;
+  background: #ffffff14;
+  font: 700 0.72rem 'Segoe UI', Arial, sans-serif;
+  color: inherit;
+}
+.sk-menu-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #ffffff1f;
+  font-size: 0.8rem;
+  color: #9cdfcf;
+}
+.sk-quit {
+  border: 0;
+  background: none;
+  color: #d8ecef;
+  font-size: 0.8rem;
+  text-decoration: underline;
+}
+@media (max-width: 560px), (max-height: 520px) {
+  .sk-card {
+    gap: 9px;
+    padding-right: 10px;
+  }
+  .sk-face {
+    width: 36px;
+    height: 36px;
+  }
+  .sk-name {
+    display: none;
+  }
+  .sk-hero {
+    width: 84px;
+    height: 84px;
+  }
+  .sk-modes {
+    grid-template-columns: 1fr;
+  }
+  .sk-keys {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk-hero,
+  .sk-warn,
+  .sk-banner {
+    animation: none;
+  }
+}
+
+/* Power-ups: golden Sketchy and slow motion tint the view; chips show the time left. */
+.sk-tint {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.sk.golden .sk-tint {
+  opacity: 1;
+  background: radial-gradient(ellipse at 50% 55%, transparent 45%, #ffb30055 100%);
+  animation: sk-glow 0.6s ease-in-out infinite alternate;
+}
+.sk.slowmo .sk-tint {
+  opacity: 1;
+  background: radial-gradient(ellipse at 50% 55%, transparent 40%, #2a8cff66 100%);
+}
+@keyframes sk-glow {
+  to {
+    filter: brightness(1.4);
+  }
+}
+.sk-powers {
+  position: absolute;
+  top: 74px;
+  left: 12px;
+  display: flex;
+  gap: 6px;
+}
+.sk-power {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  background: #0f2a3dd9;
+  border: 1px solid #ffffff2e;
+}
+.sk-power b {
+  font-variant-numeric: tabular-nums;
+}
+.sk-power.star {
+  background: linear-gradient(90deg, #ffb300, #ffe066);
+  color: #3a2600;
+}
+.sk-power.slow {
+  background: #2a8cffd9;
+}
+.sk-power.surf {
+  background: #12a4b8d9;
+}
+.sk-mult.fire b {
+  color: #ff7a2f;
+  text-shadow: 0 0 10px #ff9a3c, 0 0 20px #ff5e00;
+  animation: sk-flicker 0.25s infinite alternate;
+}
+@keyframes sk-flicker {
+  to {
+    text-shadow: 0 0 6px #ffc24a, 0 0 14px #ff5e00;
+  }
+}
+.sk-pop.gold,
+.sk-pop.star {
+  font-size: 1.6rem;
+  color: #ffe066;
+}
+.sk-pop.slow {
+  color: #9fe0ff;
+}
+.sk-banner.star b,
+.sk-banner.fire b {
+  color: #ffd23f;
+}
+.sk-banner.slow b {
+  color: #9fe0ff;
+}
+.sk-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 12px;
+  margin: 12px 0 0;
+  font-size: 0.74rem;
+  color: #d8ecef;
+}
+.sk-legend .dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  border-radius: 50%;
+  vertical-align: -1px;
+}
+.dot.fly {
+  background: #1b2226;
+  box-shadow: 0 0 0 2px #b8ffcf;
+}
+.dot.gold {
+  background: #ffcc33;
+}
+.dot.star {
+  background: conic-gradient(#ff7ce6, #ffe066, #7fd8ff, #9ef07a, #ff7ce6);
+}
+.dot.slow {
+  background: #7fd8ff;
+}
+@media (max-width: 560px), (max-height: 520px) {
+  .sk-legend {
+    display: none;
+  }
+  .sk-powers {
+    top: 60px;
+  }
+}

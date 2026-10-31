@@ -54,7 +54,8 @@ export const presets = [
       "terrainMode": "fall",
       "sceneWidth": 300,
       "timeOfDay": 14.5,
-      "timeFlow": false,
+      // 0.6.5: the clock runs from 14:30 like the other concepts.
+      "timeFlow": true,
       "seed": 24,
       "medianType": "barrier",
       "spans": [
