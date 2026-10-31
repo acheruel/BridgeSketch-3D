@@ -58,7 +58,7 @@ BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a
 
 - **Online:** open the [GitHub Pages demo](https://acheruel.github.io/BridgeSketch-3D/) in a modern desktop browser with WebGL 2.
 - **Locally on Windows:** extract the archive, double-click `OPEN_OFFLINE.cmd`, keep its PowerShell window open and visit [http://127.0.0.1:5174/](http://127.0.0.1:5174/). Use the localhost address rather than opening `index.html` directly, because browsers block the module loading the app needs from `file://` URLs. GitHub Pages is the main way to use the app.
-- **Self-hosting:** see [GITHUB_PAGES.md](docs/GITHUB_PAGES.md).
+- **Self-hosting:** any static web server works; GitHub Pages serves this repository from its root (keep the empty `.nojekyll` file).
 - **Sharing:** a link copied from a localhost session opens only where that local server runs; a Pages link opens anywhere.
 
 ## Controls
@@ -72,6 +72,10 @@ BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a
 ## Scope
 
 BridgeSketch 3D produces concept and presentation geometry, not structural design.
+
+## License
+
+BridgeSketch 3D is released under the [MIT License](LICENSE) · © 2026 Anthony Chéruel. Third-party models, textures and libraries keep their own licences (CC0 or MIT), listed below.
 
 ## Credits and licences
 

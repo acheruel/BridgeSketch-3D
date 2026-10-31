@@ -4,7 +4,7 @@ import * as T from 'three';
 // Techniques adapted from the reviewed references, without their multi-pass simulations:
 // - three.js Reflector / Water: one planar reflection at reduced resolution with an oblique clip plane.
 // - jeantimex/threejs-water (MIT): Fresnel-weighted sky/scene reflection, water body tint and sun glints.
-// - 0.6.4, from the 0.6.3 prototype after Noniv/web-ocean (MIT): a two-phase flow map (faster mid-channel current),
+// - 0.6.4, after Noniv/web-ocean (MIT): a two-phase flow map (faster mid-channel current),
 //   the river bed seen through shallow water (Beer-Lambert) and glints that widen and dim with distance, the normal
 //   detail filtered out at range coming back as roughness.
 // The standard PBR material keeps fog, shadows, tone mapping and the GLB export path intact.

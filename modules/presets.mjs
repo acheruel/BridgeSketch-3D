@@ -6,7 +6,7 @@ export const presets = [
     "id": "river",
     "label": "Fall river · 5 steel spans",
     "description": "Autumn afternoon on five continuous variable-depth blue steel spans, curved and skewed; four-column bents with tapered caps in the river.",
-    // 0.6.4: the welcome concept opens on its own camera (Notion « BS3D version 0.6.4 » example).
+    // 0.6.4: the welcome concept opens on its own camera.
     "camera": {"position":[-111.7,61.32,124.39],"target":[-47.7,23.23,54.19],"view":"perspective"},
     "config": {
       ...defaults,

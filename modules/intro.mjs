@@ -4,7 +4,7 @@ import { release } from './release.mjs';
 // posts and girders deepening towards the piers. A faint sketch is drawn once; the solid bridge is revealed left to
 // right as the loading progresses. Only composited transforms animate, so the fill keeps moving while the scene
 // build blocks the page.
-// 0.6.4: proportions of the Fall river example (Notion JSON): girders 1.4 m deep in the spans and 2.4 m over the
+// 0.6.4: proportions of the Fall river example: girders 1.4 m deep in the spans and 2.4 m over the
 // piers, haunch reach 45 % of each span with the app's parabola, a 0.29 m deck; bent piers whose cap tapers from
 // 1.6 m over the column to 1.1 m at its tips (drawn 4.6 m long, like the bent cap seen across), on a 1.8 m round
 // column and a footing. Depths are drawn 1.66 times
