@@ -115,11 +115,28 @@ export const defaults = {
   concreteFinish: 'light',
   // Concrete girder screens (cache-poutres) at the abutments, flush under the deck edge.
   girderScreens: true,
+  // 0.6.6: abutment faces smooth, or with an architectural formliner (vertical ribs of varied widths, 40 mm).
+  abutmentFinish: 'smooth',
   // 0.6.4: physical atmosphere (Hillaire 2020) by default; 'stylised' and 'physical' (Preetham) remain.
   skyModel: 'atmosphere',
+  // 0.6.6: steel truss footbridge (structureSystem 'truss'): pony or through, Warren / Pratt / Howe web, panel
+  // (post spacing), chord height between axes and the spacing of the floor beams and top struts.
+  trussType: 'through',
+  trussPattern: 'warren',
+  trussPanel: 4,
+  trussHeight: 4.2,
+  trussBraceSpacing: 4,
   spans: [25, 25, 25].map(length => ({ length, obstacle: 'water', width: 22, elevation: 0, angle: 90 })),
 };
 export const depths = [1, 1.2, 1.4, 1.6, 1.8];
+// Steel truss footbridges (0.6.6): truss axes 300 mm inside the deck edges; under the slab, 400 mm floor beams
+// frame into the bottom chords (structure depth 500 mm below the haunch line).
+export const TRUSS_OVER = 0.3;
+export const TRUSS_DEPTH = 0.5;
+export const isTruss = c => c.structureSystem === 'truss';
+export const trussChord = c => (c.trussHeight > 2.6 ? 0.36 : 0.3);
+// From the deck edge to the inner face of the bottom chord, where the path railings stand.
+export const trussInset = c => TRUSS_OVER + trussChord(c) / 2 + 0.02;
 // Cast-in-place and prestressed concrete superstructures: solid slab and box girder (« psbox »).
 export const isConcreteDeck = c => c.material === 'slab' || c.material === 'psbox';
 // Prestressed box girder layout: 1–4 single-cell boxes side by side under one deck slab (a single box gets two
@@ -228,8 +245,9 @@ export const roadLayout = c => {
   const left = c.sidewalkSide === 'left' || c.sidewalkSide === 'both',
     right = c.sidewalkSide === 'right' || c.sidewalkSide === 'both';
   // Type 201 is 410 mm wide, Type 301 435 mm; steel railings stand on 450 mm curbs or sidewalks.
-  const leftBarrierWidth = edgeWidth(c.leftRailing),
-    rightBarrierWidth = edgeWidth(c.rightRailing);
+  const inset = c.structureSystem === 'truss' ? trussInset(c) : 0,
+    leftBarrierWidth = edgeWidth(c.leftRailing) + inset,
+    rightBarrierWidth = edgeWidth(c.rightRailing) + inset;
   const barrierWidth = Math.max(leftBarrierWidth, rightBarrierWidth),
     innerBarrier = c.sidewalkRailing === 'none' ? 0 : edgeWidth(c.sidewalkRailing);
   const roadMin = -c.width / 2 + leftBarrierWidth + (left ? c.sidewalkWidth + innerBarrier : 0),
@@ -377,6 +395,7 @@ export function validate(raw) {
   c.concreteFinish = { rough: 'light', formwork: 'light', weathered: 'warm' }[c.concreteFinish] ?? c.concreteFinish;
   if (!['light', 'warm'].includes(c.concreteFinish)) throw Error('Select a concrete finish.');
   if (typeof c.girderScreens !== 'boolean') throw Error('Invalid girder screen option.');
+  if (!['smooth', 'formliner'].includes(c.abutmentFinish)) throw Error('Select a smooth or formliner abutment finish.');
   if (!['atmosphere', 'stylised', 'physical'].includes(c.skyModel)) throw Error('Select a sky model.');
   const cycling = c.trafficMode === 'cyclists';
   const limits = {
@@ -483,7 +502,36 @@ export function validate(raw) {
     c.columns > 6
   )
     throw Error('Invalid material, barrier, wall, sidewalk or pier configuration.');
-  if (!['girder', 'frame', 'strutted', 'arch'].includes(c.structureSystem)) throw Error('Select a structural system.');
+  if (!['girder', 'frame', 'strutted', 'arch', 'truss'].includes(c.structureSystem)) throw Error('Select a structural system.');
+  if (c.structureSystem === 'truss') {
+    if (c.trafficMode !== 'cyclists')
+      throw Error('Steel trusses are offered for footbridges: set the deck traffic to cyclists and pedestrians.');
+    if (!['pony', 'through'].includes(c.trussType) || !['warren', 'pratt', 'howe'].includes(c.trussPattern))
+      throw Error('Truss: select pony or through, and a Warren, Pratt or Howe web.');
+    for (const [k, lo, hi, label] of [
+      ['trussPanel', 2, 8, 'Post spacing'],
+      ['trussHeight', 1.2, 6, 'Truss height'],
+      ['trussBraceSpacing', 1.5, 12, 'Cross-beam spacing'],
+    ])
+      if (typeof c[k] !== 'number' || !Number.isFinite(c[k]) || c[k] < lo || c[k] > hi)
+        throw Error(`${label}: enter ${lo} to ${hi} m.`);
+    if (c.trussType === 'pony' && c.trussHeight > 2.6)
+      throw Error('Pony truss: keep the chords within 2.6 m (a taller truss needs top bracing: choose a through truss).');
+    if (c.trussType === 'through' && c.trussHeight < 3.8)
+      throw Error('Through truss: at least 3.8 m between chord axes, for 2.7 m of headroom under the top struts.');
+    if (c.width < 3 || c.width > 10) throw Error('Truss footbridge: deck width 3 to 10 m.');
+    // Deck at the bottom chords: two steel trusses on four bearings per support, no girders, no sidewalks.
+    Object.assign(c, {
+      material: 'steel',
+      girders: 2,
+      overhang: TRUSS_OVER,
+      depth: TRUSS_DEPTH,
+      variableDepth: false,
+      sidewalkSide: 'none',
+      sidewalkRailing: 'none',
+      medianType: 'none',
+    });
+  }
   if (
     !['deck', 'tied'].includes(c.archType) ||
     !['concrete', 'steel'].includes(c.archMaterial) ||
@@ -505,8 +553,11 @@ export function validate(raw) {
   if (!['mixed', 'diesel', 'bullet', 'city'].includes(c.trainStyle)) throw Error('Select a train style.');
   if (!['natural', 'profile'].includes(c.terrainShape)) throw Error('Select a natural or profile-following terrain.');
   if (!['grass', 'fall', 'snow'].includes(c.terrainMode)) throw Error('Select summer grass, autumn or snow terrain.');
+  // 0.6.6: the urban setting (lawn and Kenney buildings) is shelved; its code stays in terrain.mjs. Earlier files
+  // and links open as rural.
+  if (c.environment === 'urban') c.environment = 'rural';
   if (
-    !['rural', 'urban', 'none'].includes(c.environment) ||
+    !['rural', 'none'].includes(c.environment) ||
     !['crest', 'constant'].includes(c.profile) ||
     typeof c.showTraffic !== 'boolean'
   )

@@ -10,13 +10,20 @@ import {
 } from './vehicles.mjs';
 import { crossAt, frame, profile, totalLength, vehicleFits } from './geometry.mjs';
 
-export function vehicle(parent, m, c, s, u, type, forward = true, road) {
+// extra.path: { min, max, lift } keeps a rider on a sidewalk (u limits, height above the road); extra.speed in km/h.
+export function vehicle(parent, m, c, s, u, type, forward = true, road, extra = {}) {
   if (!c.showTraffic) return;
   if (type === 'car') type = 'sedan';
   let dimensions = vehicleDimensions(type);
-  const fits = d =>
-    road ? Math.abs(u) + d.halfWidth <= road.width / 2 - 0.2 : vehicleFits(c, s, u, d.halfLength, d.halfWidth);
+  const path = extra.path ?? null,
+    fits = d =>
+      road
+        ? Math.abs(u) + d.halfWidth <= road.width / 2 - 0.2
+        : path
+          ? u - d.halfWidth >= path.min - 1e-6 && u + d.halfWidth <= path.max + 1e-6
+          : vehicleFits(c, s, u, d.halfLength, d.halfWidth);
   if (!fits(dimensions)) {
+    if (path) return;
     type = c.trafficMode === 'cyclists' && !road ? 'cyclist' : 'sedan';
     dimensions = vehicleDimensions(type);
     if (!fits(dimensions)) return;
@@ -39,7 +46,8 @@ export function vehicle(parent, m, c, s, u, type, forward = true, road) {
     road: road ?? null,
     halfLength: dimensions.halfLength,
     halfWidth: dimensions.halfWidth,
-    speed: type === 'cyclist' ? 17 : 30,
+    speed: extra.speed ?? (type === 'cyclist' ? 17 : 30),
+    path,
   };
   group.userData.route = route;
   positionVehicle(group, c);
@@ -71,7 +79,8 @@ export function positionVehicle(group, c) {
     ? { x: road.x + road.dx * s + road.nx * u, z: road.z + road.dz * s + road.nz * u, tx: road.dx, tz: road.dz }
     : frame(c, s, u);
   // Deck vehicles ride on the crossfall; crossing-road vehicles on the 2 % crown (not trains on their ballast).
-  const lift = road ? (group.userData.route.type === 'train' ? 0 : -0.02 * Math.abs(u)) : crossAt(c, u);
+  const path = group.userData.route.path,
+    lift = road ? (group.userData.route.type === 'train' ? 0 : -0.02 * Math.abs(u)) : crossAt(c, u) + (path?.lift ?? 0);
   group.position.set(f.x, (road ? road.elevation : profile(c, s)) + lift + 0.025 + verticalOffset, f.z);
   group.rotation.order = 'YZX'; // yaw, then pitch (grade), then roll (crossfall) in the vehicle's own axes
   group.rotation.set(
@@ -81,13 +90,17 @@ export function positionVehicle(group, c) {
   );
   group.visible = road
     ? group.userData.route.type !== 'train' || Math.abs(s) <= road.halfLength + halfLength
-    : vehicleFits(c, s, u, halfLength, halfWidth);
+    : path
+      ? s >= -c.approach - 17 && s <= totalLength(c) + c.approach + 17
+      : vehicleFits(c, s, u, halfLength, halfWidth);
 }
 
 export function animateTraffic(model, dt) {
   if (!model.config.movingTraffic || !model.config.showTraffic || !Number.isFinite(dt) || dt <= 0) return;
   const c = model.config;
   for (const group of model.vehicles) {
+    // 0.6.6: a vehicle Sketchy bonked in free roam flies on its own for a few seconds.
+    if (group.userData.bonked) continue;
     const r = group.userData.route,
       reach = r.road
         ? r.road.halfLength + (r.type === 'train' ? r.halfLength : -r.halfLength)

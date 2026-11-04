@@ -109,12 +109,15 @@ export function chamferSection(points) {
 export function sweep(c, a, b, section, mat, height = profile, segments, crossU) {
   const rawSection = typeof section === 'function' ? section : () => section;
   const sectionAt = mat.userData.chamfer && height === profile ? station => chamferSection(rawSection(station)) : rawSection;
-  const steps = segments ?? Math.max(1, Math.ceil((b - a) / (c.variableDepth ? 0.4 : c.curved ? 1.5 : 3))),
+  // 0.6.6: the 0.4 m step of variable-depth bridges only where the section or its height can follow the depth
+  // (girders, slabs, boxes, haunches); barriers, sidewalks, slab and pavement keep the plain step.
+  const followsDepth = c.variableDepth && (typeof section === 'function' || height !== profile),
+    steps = segments ?? Math.max(1, Math.ceil((b - a) / (followsDepth ? 0.4 : c.curved ? 1.5 : 3))),
     pos = [],
     uv = [],
     indices = [];
   const samples = Array.from({ length: steps + 1 }, (_, j) => a + ((b - a) * j) / steps);
-  if (c.variableDepth && segments !== 1)
+  if (followsDepth && segments !== 1)
     for (const station of stations(c)) if (station > a && station < b) samples.push(station);
   samples.sort((a, b) => a - b);
   const unique = samples.filter((s, i) => i === 0 || s - samples[i - 1] > 1e-7),
@@ -339,6 +342,59 @@ export function box(parent, mat, x, y, z, w, h, d, yaw = 0) {
   o.rotation.y = yaw;
   o.castShadow = true;
   o.receiveShadow = true;
+  parent.add(o);
+  return o;
+}
+
+// 0.6.6: bearing plinth (bloc d'assise) cast on the seat: 15 mm chamfers on the top edges and the vertical
+// corners only; the bottom edges meet the seat square, with no chamfer.
+export function plinth(parent, mat, x, y, z, w, h, d, yaw = 0) {
+  const b = mat.userData.chamfer && Math.min(w, d) > 0.06 && h > 0.05 ? 0.015 : 0,
+    outline = inset =>
+      b
+        ? [
+            [-w / 2 + inset + b, -d / 2 + inset],
+            [w / 2 - inset - b, -d / 2 + inset],
+            [w / 2 - inset, -d / 2 + inset + b],
+            [w / 2 - inset, d / 2 - inset - b],
+            [w / 2 - inset - b, d / 2 - inset],
+            [-w / 2 + inset + b, d / 2 - inset],
+            [-w / 2 + inset, d / 2 - inset - b],
+            [-w / 2 + inset, -d / 2 + inset + b],
+          ]
+        : [
+            [-w / 2, -d / 2],
+            [w / 2, -d / 2],
+            [w / 2, d / 2],
+            [-w / 2, d / 2],
+          ],
+    rings = [
+      outline(0).map(([px, pz]) => [px, -h / 2, pz]),
+      outline(0).map(([px, pz]) => [px, h / 2 - b, pz]),
+      ...(b ? [outline(b).map(([px, pz]) => [px, h / 2, pz])] : []),
+    ];
+  const pos = [],
+    n = rings[0].length;
+  const quad = (p, q, r, t) => pos.push(...p, ...q, ...r, ...p, ...r, ...t);
+  for (let j = 0; j < rings.length - 1; j++)
+    for (let k = 0; k < n; k++) {
+      const l = (k + 1) % n;
+      // Counter-clockwise outline seen from above: (k → l) then up gives an outward face.
+      quad(rings[j][k], rings[j + 1][k], rings[j + 1][l], rings[j][l]);
+    }
+  const top = rings.at(-1),
+    bottom = rings[0];
+  for (let k = 1; k < n - 1; k++) {
+    pos.push(...top[0], ...top[k + 1], ...top[k]);
+    pos.push(...bottom[0], ...bottom[k], ...bottom[k + 1]);
+  }
+  const geometry = new T.BufferGeometry();
+  geometry.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+  geometry.computeVertexNormals();
+  const o = new T.Mesh(geometry, mat);
+  o.position.set(x, y, z);
+  o.rotation.y = yaw;
+  o.castShadow = o.receiveShadow = true;
   parent.add(o);
   return o;
 }

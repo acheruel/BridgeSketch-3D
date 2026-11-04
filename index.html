@@ -87,7 +87,11 @@
               </button>
               <button id="export-glb" type="button" role="menuitem">
                 <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9Z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg
-                ><span class="mi-text"><b>Export GLB</b><small>3D model for Blender, SketchUp, Revit</small></span>
+                ><span class="mi-text"><b>Export GLB</b><small>3D mesh for Blender, SketchUp, viewers</small></span>
+              </button>
+              <button id="export-ifc" type="button" role="menuitem">
+                <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18"/><path d="M4 20V9l8-5 8 5v11"/><path d="M8 20v-6h8v6"/><path d="M8 10h8"/></svg
+                ><span class="mi-text"><b>Export IFC…</b><small>BIM model for Revit, IFC 2x3 / 4 / 4.3</small></span>
               </button>
               <button id="undo" type="button" role="menuitem" data-action="undo" class="menu-sep" disabled>
                 <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg
@@ -413,8 +417,32 @@
                     <option value="frame">Rigid frame · portique, no bearings</option>
                     <option value="strutted">Strutted frame · inclined legs (béquilles)</option>
                     <option value="arch">Arch · deck arch or tied arch</option>
+                    <option value="truss">Steel truss · footbridge, deck at the bottom chords</option>
                   </select></label
                 >
+                <div id="truss-fields" class="field-grid">
+                  <label
+                    >Truss type<select name="trussType">
+                      <option value="pony">Pony · open top, knee braces</option>
+                      <option value="through">Through · top struts and bracing</option>
+                    </select></label
+                  ><label
+                    >Web pattern<select name="trussPattern">
+                      <option value="warren">Warren</option>
+                      <option value="pratt">Pratt</option>
+                      <option value="howe">Howe</option>
+                    </select></label
+                  ><label title="Spacing of the posts (panel length); rounded to an even number of panels in each span"
+                    >Post spacing · m<input name="trussPanel" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="2" max="8" step="0.25" /></label
+                  ><label title="Between the chord axes. Pony: 1.2 to 2.6 m. Through: 3.8 to 6 m."
+                    >Truss height · m<input name="trussHeight" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="1.2" max="6" step="0.1" /></label
+                  ><label title="Floor beams under the deck, and top struts of a through truss (at the nearest panel points)"
+                    >Cross-beam spacing · m<input name="trussBraceSpacing" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="1.5" max="12" step="0.25" /></label>
+                  <p class="hint">
+                    Two steel trusses carry the path between them; each one ends with an inclined end post. Simple or
+                    continuous spans follow the Continuity option. Footbridges only (cyclists and pedestrians).
+                  </p>
+                </div>
                 <div id="arch-fields" class="field-grid">
                   <label
                     >Arch type<select name="archType">
@@ -723,6 +751,11 @@
                   >Outward flare · °<input name="wingAngle" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="0" max="90" step="5" /></label
                 ><label class="check"><input name="girderScreens" type="checkbox" />Girder screens (cache-poutres)</label
                 ><label
+                  >Concrete finish<select name="abutmentFinish">
+                    <option value="smooth">Smooth</option>
+                    <option value="formliner">Architectural formliner · vertical ribs, 40 mm</option>
+                  </select></label
+                ><label
                   >Approach retaining walls<select name="approachWalls">
                     <option value="none">Embankments</option>
                     <option value="mse">TSM / MSE · concrete panels</option>
@@ -797,12 +830,11 @@
                 <label
                   >Setting<select name="environment">
                     <option value="rural">Rural · vegetation</option>
-                    <option value="urban">Urban · buildings, no trees</option>
                     <option value="none">Open landscape</option>
                   </select></label
                 ><label>Scenery seed<input name="seed" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="0" max="99999" step="1" /></label>
                 <p class="hint">
-                  Trees and buildings stay outside the bridge corridor and the area between crossing roads or railways.
+                  Trees stay outside the bridge corridor and the area between crossing roads or railways.
                   Change the seed for another layout.
                 </p>
               </div>
@@ -819,7 +851,7 @@
               </div>
             </details>
             <details class="input-group" data-group="site-sky">
-              <summary><span class="group-title">Sky &amp; weather</span><span class="group-meta" data-meta="site-sky"></span></summary>
+              <summary><span class="group-title">Sky</span><span class="group-meta" data-meta="site-sky"></span></summary>
               <div class="group-body">
                 <label
                   >Sky<select name="skyMode">
@@ -832,17 +864,10 @@
                     <option value="stylised">Stylised gradient</option>
                     <option value="physical">Preetham · analytic daylight</option>
                   </select></label
-                ><label
-                  >Weather<select name="weather">
-                    <option value="clear">Clear</option>
-                    <option value="rain">Light rain</option>
-                    <option value="snow">Light snow</option>
-                    <option value="leaves">Falling leaves · light breeze</option>
-                  </select></label
-                ><label class="check"><input name="fog" type="checkbox" />Atmospheric haze</label
-                ><label class="check"><input name="birds" type="checkbox" />Birds · flock by day</label>
+                ><label class="check"><input name="fog" type="checkbox" />Atmospheric haze</label>
                 <p class="hint">
                   Atmosphere computes Rayleigh, Mie and ozone scattering, with a real twilight. Haze is tinted by the hour; rain and snow always add fog.
+                  Weather and birds are in the view menu, top right.
                 </p>
               </div>
             </details>
@@ -896,12 +921,13 @@
              modes, the time of day and the display toggles; Export GLB and Copy link moved to the File menu and the
              model facts to the foot of the parameters panel, so the render stays clear. -->
         <div class="hud" id="hud">
+          <div class="hud-row">
           <button id="image" class="hud-btn hud-icon" type="button" title="Snapshot · save a high-quality PNG (lossless)" aria-label="Snapshot"
             ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3.2l1.6-2.2h6.4L16.8 7H20a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.6"/></svg></button
           ><div class="dock" id="dock">
-            <button id="dock-button" class="hud-btn dock-button" type="button" aria-expanded="false" aria-controls="dock-panel" title="Views, camera, time of day and display"
+            <button id="dock-button" class="hud-btn dock-button" type="button" aria-expanded="false" aria-controls="dock-panel" title="Views, camera, weather and display"
               ><svg class="dock-layers" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15.5l9 5 9-5-3.2-1.8L12 17l-5.8-3.3z" opacity=".55"/><path d="M3 11.5l9 5 9-5-3.2-1.8L12 13l-5.8-3.3z" opacity=".8"/><path d="M12 2.5l9 5-9 5-9-5z"/></svg
-              ><span id="dock-view">3D</span><span class="dock-time" id="dock-time">18:00</span
+              ><span id="dock-view">3D</span
               ><span class="caret" aria-hidden="true">▾</span></button
             >
             <div class="dock-panel" id="dock-panel" role="group" aria-label="View and display" hidden>
@@ -923,12 +949,24 @@
                   ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>Focus</span></button>
               </div>
               <div class="dock-scene">
-                <div class="dock-h">Time of day</div>
-                <div class="time-control">
-                  <button id="timePlay" type="button" class="time-play" aria-pressed="true" title="Stop the time">❚❚</button
-                  ><input id="timeOfDay" type="range" min="0" max="24" step=".25" value="18" aria-label="Time of day" /><output
-                    id="timeLabel" for="timeOfDay">18:00</output>
+                <div class="dock-h">Weather &amp; effects</div>
+                <select name="weather" form="parameters" hidden aria-hidden="true" tabindex="-1">
+                  <option value="clear">Clear</option>
+                  <option value="rain">Light rain</option>
+                  <option value="snow">Light snow</option>
+                  <option value="leaves">Falling leaves</option>
+                </select>
+                <div class="dock-weather" role="group" aria-label="Weather">
+                  <button data-weather="clear" type="button" aria-pressed="true"
+                    ><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>Clear</button
+                  ><button data-weather="rain" type="button" aria-pressed="false"
+                    ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 15.5a4.5 4.5 0 1 1 1.2-8.8A5.5 5.5 0 0 1 18.6 9 3.3 3.3 0 0 1 18 15.5Z"/><path d="M8.5 18.5 7.6 21M12.5 18.5l-.9 2.5M16.5 18.5l-.9 2.5"/></svg>Rain</button
+                  ><button data-weather="snow" type="button" aria-pressed="false"
+                    ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/><path d="m9.6 4.6 2.4 1.6 2.4-1.6M9.6 19.4l2.4-1.6 2.4 1.6"/></svg>Snow</button
+                  ><button data-weather="leaves" type="button" aria-pressed="false"
+                    ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19c0-8 5-13 15-14-1 10-6 15-14 15"/><path d="M5 19 13 11"/></svg>Leaves</button>
                 </div>
+                <label class="dock-switch"><input name="birds" form="parameters" type="checkbox" role="switch" /><span class="sw" aria-hidden="true"></span><span>Birds<small>A flock of gulls by day</small></span></label>
                 <div class="dock-h">Display</div>
                 <div class="view-options">
                   <label class="dock-switch"><input id="reveal" type="checkbox" role="switch" /><span class="sw" aria-hidden="true"></span><span>Reveal structure<small>Hide the deck to see the girders</small></span></label
@@ -938,6 +976,14 @@
                 </div>
               </div>
             </div>
+          </div>
+          </div>
+          <!-- 0.6.6: the time of day has its own bar under the view menu, always visible. -->
+          <div class="time-bar time-control" id="time-bar" role="group" aria-label="Time of day">
+            <button id="timePlay" type="button" class="time-play" aria-pressed="true" title="Stop the time">❚❚</button
+            ><svg class="time-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.6"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6 18 18M6 18l1.4-1.4M16.6 7.4 18 6"/></svg
+            ><input id="timeOfDay" type="range" min="0" max="24" step=".25" value="18" aria-label="Time of day" /><output
+              id="timeLabel" for="timeOfDay">18:00</output>
           </div>
         </div>
         <p id="drive-status" class="drive-status" role="status" hidden></p>
@@ -976,6 +1022,42 @@
         </div>
       </form>
     </dialog>
+    <dialog id="ifc-dialog" aria-labelledby="ifcTitle">
+      <form method="dialog">
+        <button class="close-dialog" aria-label="Close">×</button>
+        <h2 id="ifcTitle">Export IFC · BIM model</h2>
+        <p>
+          Every member becomes an IFC element with its class (beam, slab, wall, column, footing, railing, bearing), a
+          name, a material, a colour and a property set (role, span or support, chainage, paint). Concept geometry:
+          the shapes are faceted, not parametric.
+        </p>
+        <fieldset class="ifc-schemas">
+          <legend>Schema</legend>
+          <label class="ifc-choice"
+            ><input type="radio" name="ifcSchema" value="IFC2X3" checked /><span
+              ><b>IFC 2x3 · Revit, open as a project</b
+              ><small>The most robust choice for Revit 2022, 2023 and 2026: File › Open › IFC builds a Revit project, each element in its category (Structural Framing, Floors, Walls, Structural Columns, Structural Foundations, Railings; bearings as Generic Models). Largest files.</small></span
+            ></label
+          ><label class="ifc-choice"
+            ><input type="radio" name="ifcSchema" value="IFC4" /><span
+              ><b>IFC 4 · Revit link, viewers</b
+              ><small>Revit reads IFC 4 as a link only (Insert › Link IFC): selectable, classified elements with their properties, not editable. Lighter triangulated geometry; the format of most current viewers.</small></span
+            ></label
+          ><label class="ifc-choice"
+            ><input type="radio" name="ifcSchema" value="IFC4X3" /><span
+              ><b>IFC 4.3 · infrastructure (IfcBridge)</b
+              ><small>The bridge schema: IfcBridge with superstructure, abutment and pier parts, and IfcBearing. For Civil 3D, Tekla, Bonsai (Blender) or an infrastructure viewer; the Revit 2026 help lists IFC 2x3 and IFC 4 only.</small></span
+            ></label>
+        </fieldset>
+        <p class="hint">
+          Coordinates: metres, Z up, in the frame of File › Road profile (west axis at <output id="ifcOrigin"></output>).
+          Free viewers to check the file: Open IFC Viewer, BIMvision, or Bonsai in Blender.
+        </p>
+        <div class="dialog-actions">
+          <button value="close">Cancel</button><button id="exportIfc" class="primary" type="button">Export IFC</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="about">
       <form method="dialog">
         <button class="close-dialog" aria-label="Close">×</button
@@ -992,6 +1074,14 @@
           Starfield and grass species adapted from CK42BB/procedural-stars-threejs and procedural-grass-threejs (MIT);
           atmosphere after Hillaire 2020 (sebh/UnrealEngineSkyAtmosphere, MIT) and Bruneton 2008 (BSD); Preetham sky
           after Tw1ddle/Sky-Shader and the three.js Sky object (MIT); river details after Noniv/web-ocean (MIT).
+        </p>
+        <h3>Version 0.6.6</h3>
+        <p>
+          IFC export (File › Export IFC…) in IFC 2x3 for Revit, IFC 4 and IFC 4.3 with IfcBridge; steel truss
+          footbridges (pony or through, Warren, Pratt or Howe); an architectural formliner on the abutments; realistic
+          procedural cars and trucks; weather and birds in the view menu, which now stays open, with the time of day on
+          its own bar; a cyclist on every sidewalk and a faster left lane; plinths without a bottom chamfer; the urban
+          setting shelved. Sketchy can now charge a super jump, fly with a cape and bonk everything in free roam.
         </p>
         <h3>Version 0.6.5</h3>
         <p>

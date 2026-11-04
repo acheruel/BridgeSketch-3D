@@ -1,8 +1,8 @@
 import * as T from 'three';
 import { mergeGeometries } from '../vendor/BufferGeometryUtils.js';
-import data from '../models/vehicles-data.mjs';
+import { VEHICLE_BUILDERS, VEHICLE_SPECS, buildTractor } from './car-models.mjs';
 
-// Kenney Car Kit 3.1, CC0; offline meshes with dedicated automotive materials.
+// 0.6.6: procedural vehicles with realistic proportions (car-models.mjs) replace the Kenney Car Kit meshes.
 export const vehicleKinds = Object.freeze(['sedan', 'suv', 'hatchback', 'pickup', 'van', 'truck', 'semi', 'double']);
 // Four of each ordinary vehicle for every road train.
 export function trafficKind(index) {
@@ -162,11 +162,7 @@ const templates = new Map();
 export function vehicleDimensions(type) {
   if (type === 'cyclist') return { length: 1.75, width: 0.68, height: 1.8, halfLength: 0.95, halfWidth: 0.37 };
   const d =
-    type === 'semi'
-      ? { length: 13.3, width: 2.74, height: 3.78 }
-      : type === 'double'
-        ? { length: DOUBLE.length, width: 2.6, height: DOUBLE.height }
-        : data[type === 'car' ? 'sedan' : type];
+    type === 'double' ? { length: DOUBLE.length, width: 2.6, height: DOUBLE.height } : VEHICLE_SPECS[type === 'car' ? 'sedan' : type];
   if (!d) throw new Error(`Unknown vehicle: ${type}`);
   return {
     length: d.length,
@@ -177,29 +173,6 @@ export function vehicleDimensions(type) {
   };
 }
 
-function modelParts(type) {
-  if (!templates.has(type)) {
-    const buckets = new Map();
-    for (const part of data[type].meshes) {
-      const geo = new T.BufferGeometry();
-      geo.setAttribute('position', new T.Float32BufferAttribute(part.positions, 3));
-      geo.setAttribute('normal', new T.Float32BufferAttribute(part.normals, 3));
-      geo.setIndex(part.indices);
-      if (!buckets.has(part.material)) buckets.set(part.material, []);
-      buckets.get(part.material).push(geo);
-    }
-    templates.set(
-      type,
-      [...buckets].map(([material, geos]) => {
-        const geometry = mergeGeometries(geos, false);
-        geos.forEach(g => g.dispose());
-        return { material, geometry };
-      }),
-    );
-  }
-  return templates.get(type);
-}
-
 // Procedural bodies (semi trailer, double) are baked once into one merged geometry per material and shared by every
 // instance: dozens of boxes and wheels become a handful of draw calls.
 function bakeParts(build) {
@@ -207,6 +180,11 @@ function bakeParts(build) {
   const put = (material, geometry, x = 0, y = 0, z = 0, spin = false) => {
     if (spin) geometry.rotateX(Math.PI / 2); // cylinders: axis Y → Z (wheels)
     geometry.translate(x, y, z);
+    // One attribute layout for the merge: positions and normals, no index, no UVs.
+    if (geometry.index) geometry = geometry.toNonIndexed();
+    for (const name of Object.keys(geometry.attributes)) if (name !== 'position' && name !== 'normal') geometry.deleteAttribute(name);
+    if (!geometry.attributes.normal) geometry.computeVertexNormals();
+    geometry.clearGroups();
     if (!buckets.has(material)) buckets.set(material, []);
     buckets.get(material).push(geometry);
   };
@@ -246,24 +224,8 @@ function buildDouble(put) {
     put('rubber', new T.CylinderGeometry(r, r, t, 18), x(d), r, z, true);
     put('metal', new T.CylinderGeometry(0.3, 0.3, t + 0.01, 14), x(d), r, z + Math.sign(z) * 0.005, true);
   };
-  // Tractor: bumper, long hood, cab, sleeper with roof fairing, tanks, stacks, mirrors.
-  box('metal', 0, 0.35, 0.45, 0.85, 2.5); // front bumper
-  box('trim', 0.3, 0.45, 0.85, 1.95, 1.2); // grille
-  box('paint', 0.35, 2.55, 0.95, 1.95, 2.05); // hood
-  for (const z of [-1.1, 1.1]) {
-    box('paint', 0.6, 2.2, 0.75, 1.25, 0.35, z); // fender
-    box('headlamp', 0.32, 0.4, 1.35, 1.55, 0.35, z * 0.8);
-    box('metal', 3.4, 4.9, 0.55, 1.15, 0.55, z * 1.02); // fuel tank
-    put('metal', new T.CylinderGeometry(0.08, 0.08, 2.45, 8), x(4.55), 2.925, z * 1.05); // exhaust stack
-    box('trim', 2.35, 2.45, 2.3, 2.75, 0.12, z * 1.35); // mirror
-  }
-  box('paint', 2.55, 4.3, 0.95, 3.15, 2.45); // cab
-  box('glass', 2.5, 2.62, 2.15, 3.0, 2.2); // windshield
-  for (const z of [-1.23, 1.23]) box('glass', 2.8, 3.6, 2.15, 2.85, 0.02, z); // side windows
-  box('paint', 4.3, 6.0, 0.95, 3.55, 2.45); // sleeper
-  box('paint', 3.4, 6.0, 3.15, DOUBLE.height - 0.1, 2.3); // roof fairing
-  box('trim', 0.4, 7.4, 0.55, 0.85, 1.0); // chassis
-  box('trim', 5.9, 7.1, 0.95, 1.12, 1.9); // fifth wheel
+  // Tractor (0.6.6: the procedural long-nose tractor with sleeper of car-models.mjs).
+  buildTractor(put, L / 2);
   // Trailer 1 (5.2–13.4) on the fifth wheel, converter dolly with draw bar, trailer 2 (13.4–21.6).
   const trailer = (d0, d1, axle) => {
     box('cargo', d0, d1, 1.25, DOUBLE.height, 2.6); // dry-van box
@@ -283,12 +245,7 @@ function buildDouble(put) {
   box('trim', 13.4, 14.5, 0.62, 0.72, 0.25); // dolly draw bar
   box('trim', 14.0, 15.3, 0.75, 1.0, 1.9); // dolly frame
   trailer(13.4, 21.6, DOUBLE.lastAxle - 0.6);
-  for (const z of [-1.08, 1.08]) {
-    wheel(DOUBLE.frontAxle, z);
-    wheel(5.9, z * 0.92, true);
-    wheel(7.2, z * 0.92, true);
-    wheel(14.65, z * 0.92, true);
-  }
+  for (const z of [-1.08, 1.08]) wheel(14.65, z * 0.92, true);
 }
 
 // Semi trailer behind the Kenney tractor (local x: the trailer runs from -6.65 to 2.05).
@@ -332,11 +289,8 @@ export function createVehicleModel(type, paintMaterial, materials = {}) {
     group = new T.Group(),
     material = resolver(paintMaterial ?? finishes.paint, materials);
   group.name = type;
-  group.userData = { ...dimensions, source: 'Kenney Car Kit 3.1 (CC0)', units: 'metres', forwardAxis: '+X' };
-  for (const part of modelParts(type === 'semi' ? 'tractor' : type)) {
-    const mesh = addPart(group, part, material, type);
-    if (type === 'semi') mesh.position.x = 3.9;
-  }
+  group.userData = { ...dimensions, source: 'BridgeSketch 3D procedural vehicle', units: 'metres', forwardAxis: '+X' };
+  for (const part of bakedParts(type, VEHICLE_BUILDERS[type])) addPart(group, part, material, type);
   if (type === 'semi') for (const part of bakedParts('semi-trailer', buildSemiTrailer)) addPart(group, part, material, type);
   return group;
 }
@@ -345,9 +299,9 @@ export function createVehicleModel(type, paintMaterial, materials = {}) {
 // Roof boxes (sedan, hatchback) and a ladder/pipe rack (van): shared geometry, one extra mesh on a minority of
 // vehicles. `r` is a 0–1 deterministic random; the accessory appears when r < chance.
 const ROOF = {
-  sedan: { chance: 0.16, x: -0.42, y: 1.48, kind: 'box' },
-  hatchback: { chance: 0.14, x: -0.47, y: 1.43, kind: 'box' },
-  van: { chance: 0.35, x: -0.47, y: 2.42, kind: 'rack' },
+  sedan: { chance: 0.16, x: -0.3, y: 1.46, kind: 'box' },
+  hatchback: { chance: 0.14, x: -0.35, y: 1.48, kind: 'box' },
+  van: { chance: 0.35, x: -0.6, y: 2.56, kind: 'rack' },
 };
 const roofGeometry = {};
 function roofParts(kind) {

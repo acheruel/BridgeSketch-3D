@@ -41,8 +41,10 @@ import {
   bearingPositions,
   crossAt,
   crossfallSection,
+  isTruss,
+  trussInset,
 } from './geometry.mjs';
-import { addArch, addPsbox, addStrutLeg } from './systems.mjs';
+import { addArch, addPsbox, addStrutLeg, addTruss } from './systems.mjs';
 import { addEnvironment, approachSurfaces, frontSlopeFit, terrainSampler } from './terrain.mjs';
 import {
   beam,
@@ -53,6 +55,7 @@ import {
   clipMeshAtCut,
   crossPlate,
   nebtSection,
+  plinth,
   profiledSupportWall,
   rect,
   skewPlate,
@@ -70,11 +73,23 @@ import { bracingMember, webOffset, webStiffener } from './steel-details.mjs';
 import { vehicle } from './traffic.mjs';
 import { buildLighting } from './lighting.mjs';
 import { concreteFinishes } from './materials.mjs';
+import { formlinerFace } from './formliner.mjs';
 
 // Outer face of the abutment walls, inside the deck edge.
 const ABUTMENT_SIDE = 0.075;
 
-export function buildBridge(c, m, { batch = true } = {}) {
+// 0.6.6: on two or more lanes in one direction, each lane to the left (towards the centre line) runs a little
+// faster than the one on its right: 30 km/h on the right-hand lane, +15 % per lane. One speed per lane keeps the
+// spacing, so vehicles never catch up with each other.
+export function laneSpeed(c, lane, type = 'sedan') {
+  if (type === 'cyclist') return 17;
+  const forward = laneForward(c, lane),
+    rank = c.laneCount === 1 ? 0 : forward ? c.laneCount - 1 - lane : lane;
+  return 30 * (1 + 0.15 * rank);
+}
+
+// site: false leaves out the terrain, water, vegetation and lighting (the IFC export needs the bridge only).
+export function buildBridge(c, m, { batch = true, site = true } = {}) {
   const preview = approachSurfaces(c),
     L0 = totalLength(c),
     extent = Math.max(L0 + 2 * c.approach + 36, ...preview.flat().map(p => 2 * Math.abs(p[0]) + 8)),
@@ -111,7 +126,8 @@ export function buildBridge(c, m, { batch = true } = {}) {
   const haunches = new T.Group();
   haunches.name = 'Concrete deck haunches';
   structure.add(haunches);
-  const ss = stations(c),
+  const truss = isTruss(c),
+    ss = stations(c),
     L = totalLength(c),
     half = c.width / 2,
     gspace = spacing(c),
@@ -158,7 +174,7 @@ export function buildBridge(c, m, { batch = true } = {}) {
       bridgeRailing(deck, m, c, a, b, edge, side, type, raised, profile, run);
       return;
     }
-    addSweep(deck, a, b, chamferSection(concreteBarrier(type, edge, side, raised ?? base)), m.edge);
+    addSweep(deck, a, b, chamferSection(concreteBarrier(type, edge, side, raised ?? base)), m.edge).name = `Concrete barrier ${type}`;
     if (type === '311A') barrierRail(deck, m, c, a, b, edge, side, raised ?? base, run);
   };
   const innerOnApproach = c.approachBarrier === 'extend' && c.sidewalkRailing !== 'none';
@@ -180,7 +196,7 @@ export function buildBridge(c, m, { batch = true } = {}) {
           b,
           sidewalkProfile(c.asphalt, side * half, sidewalkFace(side), side, c.sidewalkRailing !== '301', base),
           m.concrete,
-        );
+        ).name = 'Sidewalk';
   };
   const sidewalkAt = (side, u) => sidewalkTop(c.asphalt, sidewalkFace(side), u);
   // Dashed lane dividers (3 m dash, 6 m gap), continuous edge lines; opposing directions in yellow.
@@ -203,25 +219,33 @@ export function buildBridge(c, m, { batch = true } = {}) {
       }
     }
   };
-  const addBoxGirder = (group, a, b, u, g) => {
+  // The five plates of a box stay one girder for the IFC export (userData.ifcGroup).
+  const addBoxGirder = (group, a, b, u, g, label = `Box girder ${g + 1}`) => {
     const box = boxGirder(c, a, b, u, steelFor(g));
-    for (const mesh of [...box.children]) group.add(mesh);
+    for (const mesh of [...box.children]) {
+      mesh.userData.ifcGroup = label;
+      group.add(mesh);
+    }
   };
   c.spans.forEach((span, i) => {
     const a = ss[i] + (c.continuous ? 0 : 0.025),
       b = ss[i + 1] - (c.continuous ? 0 : 0.025);
-    if (c.material === 'slab') structure.add(slabMesh(c, a, b, m.concrete));
-    else addSweep(deck, a, b, rect(-half, half, -c.asphalt, -c.asphalt - c.deck), m.concrete);
+    if (c.material === 'slab') structure.add(slabMesh(c, a, b, m.concrete)).children.at(-1).name = `Solid slab span ${i + 1}`;
+    else {
+      // A truss deck spans between the bottom chords.
+      const edge = truss ? half - trussInset(c) + 0.02 : half;
+      addSweep(deck, a, b, rect(-edge, edge, -c.asphalt, -c.asphalt - c.deck), m.concrete).name = `Deck slab span ${i + 1}`;
+    }
     // 65 mm asphalt covers the roadway only; curbs, barriers, sidewalks and medians sit on the slab.
     for (const [u0, u1] of wearingStrips)
-      addSweep(deck, a, b, rect(u0, u1, 0, -c.asphalt), c.laneCount ? m.asphalt : m.concrete);
+      addSweep(deck, a, b, rect(u0, u1, 0, -c.asphalt), c.laneCount ? m.asphalt : m.concrete).name = 'Wearing surface';
     addSidewalks(a, b);
     // Edge barriers always continue past the abutments over the return walls, so the bridge spans never end a run.
     for (const side of [-1, 1])
       addBarrier(
         a,
         b,
-        side * half,
+        side * (truss ? half - trussInset(c) : half),
         side,
         side < 0 ? c.leftRailing : c.rightRailing,
         (side < 0 && leftSide) || (side > 0 && rightSide) ? sidewalkAt(side, side * half) : null,
@@ -243,10 +267,10 @@ export function buildBridge(c, m, { batch = true } = {}) {
       }
     addMedian(a, b);
     addMarkings(a, b);
-    for (let g = 0; g < (c.material === 'slab' || c.material === 'psbox' ? 0 : c.girders); g++) {
+    for (let g = 0; g < (c.material === 'slab' || c.material === 'psbox' || truss ? 0 : c.girders); g++) {
       const u = -half + c.overhang + g * gspace;
       if (!(c.continuous && (c.material === 'steel' || c.material === 'box'))) {
-        if (c.material === 'box') addBoxGirder(structure, a + 0.22, b - 0.22, u, g);
+        if (c.material === 'box') addBoxGirder(structure, a + 0.22, b - 0.22, u, g, `Span ${i + 1} box girder ${g + 1}`);
         else {
           const section =
             c.material === 'concrete'
@@ -305,7 +329,7 @@ export function buildBridge(c, m, { batch = true } = {}) {
       c.material === 'concrete'
         ? Math.max(1, Math.ceil((c.spans[i].length - 1e-6) / 15))
         : Math.max(1, Math.ceil((b - a) / 8));
-    for (let n = 1; n < frames && c.material !== 'slab' && c.material !== 'psbox'; n++) {
+    for (let n = 1; n < frames && c.material !== 'slab' && c.material !== 'psbox' && !truss; n++) {
       const s = a + ((b - a) * n) / frames;
       for (let g = 0; g < c.girders - 1; g++) {
         const u = -half + c.overhang + g * gspace,
@@ -390,18 +414,37 @@ export function buildBridge(c, m, { batch = true } = {}) {
             if (face < 0 ? g > 0 : g < c.girders - 1) webStiffener(structure, steelFor(g), c, i, s, u, face);
         }
     }
-    if (c.showTraffic)
+    if (c.showTraffic) {
       layout.laneCenters.forEach((u, lane) => {
         const type =
             c.trafficMode === 'cyclists'
               ? 'cyclist'
               : trafficKind(i * c.laneCount + lane + c.seed),
           s = a + (b - a) * (lane % 2 ? 0.65 : 0.35);
-        vehicle(deck, m, c, s, u, type, laneForward(c, lane));
+        vehicle(deck, m, c, s, u, type, laneForward(c, lane), undefined, { speed: laneSpeed(c, lane, type) });
       });
+      // 0.6.6: a cyclist rides every sidewalk by default (the right-hand direction on each side).
+      if (c.trafficMode !== 'cyclists')
+        for (const [side, on] of [
+          [-1, leftSide],
+          [1, rightSide],
+        ]) {
+          if (!on) continue;
+          const face = sidewalkFace(side),
+            inner = face + side * (c.sidewalkRailing === '301' ? 0 : 0.1) + side * 0.15,
+            outer = side * (half - edgeWidth(side < 0 ? c.leftRailing : c.rightRailing)) - side * 0.15,
+            [min, max] = [inner, outer].sort((p, q) => p - q);
+          if (max - min < 0.9) continue;
+          const u = (min + max) / 2;
+          vehicle(deck, m, c, a + (b - a) * (side < 0 ? 0.25 : 0.75), u, 'cyclist', side > 0, undefined, {
+            path: { min, max, lift: sidewalkAt(side, u) },
+          });
+        }
+    }
   });
   if (c.material === 'psbox') addPsbox(c, m, structure);
-  if (c.continuous && (c.material === 'steel' || c.material === 'box'))
+  if (truss) addTruss(c, m, structure);
+  if (c.continuous && (c.material === 'steel' || c.material === 'box') && !truss)
     for (let g = 0; g < c.girders; g++) {
       const u = -half + c.overhang + g * gspace;
       if (c.material === 'box') addBoxGirder(structure, 0.25, L - 0.25, u, g);
@@ -415,7 +458,7 @@ export function buildBridge(c, m, { batch = true } = {}) {
           (_, s, v, across) => girderTop(c, 0, s, u) + (v < -0.05 ? c.depth - girderDepth(c, s, across) : 0),
           undefined,
           u,
-        );
+        ).name = `Continuous girder ${g + 1}`;
     }
   const earthLevel = Math.min(-0.3, ...c.spans.map(s => s.elevation - 1));
   ss.forEach((s, j) => {
@@ -458,7 +501,31 @@ export function buildBridge(c, m, { batch = true } = {}) {
       );
       abutment.name = 'Abutment seat';
       // Wing/return walls use the actual skewed support line and bridge tangent.
-      const direction = j === 0 ? -1 : 1;
+      const direction = j === 0 ? -1 : 1,
+        liner = c.abutmentFinish === 'formliner';
+      // 0.6.6: formliner on the front wall, from the ground to a 200 mm plain band under the bearing seat.
+      if (liner) {
+        const u0 = -half + ABUTMENT_SIDE,
+          front = t => supportBasis(c, s, u0 + t);
+        formlinerFace(
+          structure,
+          m.concrete,
+          {
+            length: c.width - 2 * ABUTMENT_SIDE,
+            at: t => {
+              const p = front(t);
+              return [p.x - direction * p.tx * 0.9, p.z - direction * p.tz * 0.9];
+            },
+            out: t => {
+              const p = front(t);
+              return [-direction * p.tx, -direction * p.tz];
+            },
+            bottom: () => earth,
+            top: t => seatAt(u0 + t),
+          },
+          { phase: j * 3, name: 'Abutment formliner' },
+        );
+      }
       const backwall = profiledSupportWall(
         structure,
         m.concrete,
@@ -510,16 +577,50 @@ export function buildBridge(c, m, { batch = true } = {}) {
             );
           wall.name = `Return wall ${j === 0 ? 'start' : 'end'} ${side < 0 ? 'left' : 'right'}`;
           structure.add(wall);
+          if (liner) {
+            const outer = u + side * 0.225,
+              at = t => frame(c, supportStation(c, s + direction * t, outer), outer);
+            formlinerFace(
+              structure,
+              m.concrete,
+              {
+                length,
+                at: t => [at(t).x, at(t).z],
+                out: t => [side * at(t).nx, side * at(t).nz],
+                bottom: () => earth,
+                top: t => profile(c, supportStation(c, s + direction * t, outer)) - 0.17 + crossAt(c, outer),
+              },
+              { band: 0.3, phase: j * 3 + side + 1, name: 'Return wall formliner' },
+            );
+          }
         } else {
           const vx = direction * f.tx * Math.cos(a) + side * f.nx * Math.sin(a),
             vz = direction * f.tz * Math.cos(a) + side * f.nz * Math.sin(a),
-            p1 = [p0[0] + vx * length, 0, p0[2] + vz * length];
-          wallBetween(structure, m.concrete, p0, p1, 0.45, earth, Math.max(seatMin + 0.2, profile(c, s) - 0.17));
+            p1 = [p0[0] + vx * length, 0, p0[2] + vz * length],
+            top = Math.max(seatMin + 0.2, profile(c, s) - 0.17);
+          wallBetween(structure, m.concrete, p0, p1, 0.45, earth, top);
+          if (liner) {
+            // Outer face: the wall normal that points away from the deck centre line.
+            let [nx, nz] = [-vz, vx];
+            if (nx * side * f.nx + nz * side * f.nz < 0) [nx, nz] = [-nx, -nz];
+            formlinerFace(
+              structure,
+              m.concrete,
+              {
+                length,
+                at: t => [p0[0] + vx * t + nx * 0.225, p0[2] + vz * t + nz * 0.225],
+                out: () => [nx, nz],
+                bottom: () => earth,
+                top: () => top,
+              },
+              { band: 0.3, phase: j * 3 + side + 1, name: 'Wingwall formliner' },
+            );
+          }
         }
       }
       // Girder screens (cache-poutres): a concrete wall under each deck edge, from the seat to the slab, between the
       // abutment face and the backwall, so the girder ends and bearings are hidden in elevation.
-      if (c.girderScreens && ['concrete', 'steel', 'box'].includes(c.material))
+      if (c.girderScreens && ['concrete', 'steel', 'box'].includes(c.material) && !truss)
         for (const side of [-1, 1]) {
           const flange = c.material === 'concrete' ? 0.6 : c.material === 'box' ? c.boxTopWidth / 2 : 0.25,
             girderFace = half - c.overhang + flange + 0.03,
@@ -538,6 +639,21 @@ export function buildBridge(c, m, { batch = true } = {}) {
           );
           screen.name = 'Girder screen (cache-poutre)';
           structure.add(screen);
+          if (liner) {
+            const at = t => frame(c, supportStation(c, s0 + t, side * outer), side * outer);
+            formlinerFace(
+              structure,
+              m.concrete,
+              {
+                length: s1 - s0,
+                at: t => [at(t).x, at(t).z],
+                out: t => [side * at(t).nx, side * at(t).nz],
+                bottom: () => seatAt(side * outer) - 0.05,
+                top: t => profile(c, supportStation(c, s0 + t, side * outer)) - c.asphalt - c.deck + crossAt(c, side * outer),
+              },
+              { band: 0.1, phase: j + side, name: 'Girder screen formliner' },
+            );
+          }
         }
     } else if (c.structureSystem === 'strutted' && mono) {
       addStrutLeg(c, m, structure, j, earth);
@@ -625,7 +741,7 @@ export function buildBridge(c, m, { batch = true } = {}) {
             );
           arm.name = 'V pier arm';
         }
-        box(structure, m.concrete, f0.x, earth + 0.2, f0.z, 2 * a + 0.8, 0.6, depth + 0.6, f0.angle);
+        box(structure, m.concrete, f0.x, earth + 0.2, f0.z, 2 * a + 0.8, 0.6, depth + 0.6, f0.angle).name = 'V pier footing';
       }
       const us =
         c.pierType === 'vshape'
@@ -654,7 +770,7 @@ export function buildBridge(c, m, { batch = true } = {}) {
               thickness,
             );
           post.name = 'Portal leg';
-          box(structure, m.concrete, fb.x, earth + 0.12, fb.z, c.columnDiameter + 0.3, 0.45, thickness + 0.3, f.angle);
+          box(structure, m.concrete, fb.x, earth + 0.12, fb.z, c.columnDiameter + 0.3, 0.45, thickness + 0.3, f.angle).name = 'Column footing';
           continue;
         }
         if (c.pierType === 'hammerhead') {
@@ -701,7 +817,7 @@ export function buildBridge(c, m, { batch = true } = {}) {
               fillet.name = 'Hammerhead flare';
             }
           }
-          box(structure, m.concrete, f.x, earth + 0.12, f.z, w + 0.3, 0.45, d + 0.3, f.angle);
+          box(structure, m.concrete, f.x, earth + 0.12, f.z, w + 0.3, 0.45, d + 0.3, f.angle).name = 'Column footing';
           continue;
         } else if (c.columnShape !== 'round') {
           // Square, or rectangular: width across the support line, thickness along the road.
@@ -714,12 +830,13 @@ export function buildBridge(c, m, { batch = true } = {}) {
             m.concrete,
           );
           column.position.set(f.x, earth + height / 2, f.z);
+          column.name = 'Round column';
           column.castShadow = true;
           column.receiveShadow = true;
           structure.add(column);
         }
-        const plinth = c.columnShape === 'rectangular' ? c.columnThickness : c.columnDiameter;
-        box(structure, m.concrete, f.x, earth + 0.12, f.z, c.columnDiameter + 0.3, 0.45, plinth + 0.3, f.angle);
+        const footprint = c.columnShape === 'rectangular' ? c.columnThickness : c.columnDiameter;
+        box(structure, m.concrete, f.x, earth + 0.12, f.z, c.columnDiameter + 0.3, 0.45, footprint + 0.3, f.angle).name = 'Column footing';
       }
       if (c.pierType === 'portal' && c.portalBeam) {
         // Tie beam between the portal legs at mid-height.
@@ -756,9 +873,9 @@ export function buildBridge(c, m, { batch = true } = {}) {
           underside = padBottom(u, side);
         // Fixed 75 mm elastomeric pads; plinth height varies to meet each beam on the common support seat.
         const bearing = supportBasis(c, s, u);
-        box(structure, m.dark, f.x, underside + 0.0375, f.z, 0.55, 0.075, 0.48, bearing.angle - Math.PI / 2);
+        box(structure, m.dark, f.x, underside + 0.0375, f.z, 0.55, 0.075, 0.48, bearing.angle - Math.PI / 2).name = 'Bearing pad';
         const height = Math.max(0.1, underside - seatAt(u, side));
-        const plinth = box(
+        const block = plinth(
           structure,
           m.concrete,
           f.x,
@@ -769,10 +886,10 @@ export function buildBridge(c, m, { batch = true } = {}) {
           0.72,
           bearing.angle - Math.PI / 2,
         );
-        plinth.name = 'Bearing plinth';
-        plinth.userData.height = height;
+        block.name = 'Bearing plinth';
+        block.userData.height = height;
       }
-    if (c.material !== 'slab' && c.material !== 'psbox')
+    if (c.material !== 'slab' && c.material !== 'psbox' && !truss)
       for (const side of lines) {
         const k = spanOf(side),
           line = s + side;
@@ -933,9 +1050,9 @@ export function buildBridge(c, m, { batch = true } = {}) {
       };
       const lo = edgeOf(-1),
         hi = edgeOf(1);
-      addSweep(deck, p, q, rect(lo, hi, 0, -0.17), c.laneCount ? m.asphalt : m.concrete);
-      if (lo > -half + 1e-6) addSweep(deck, p, q, rect(-half, lo, -c.asphalt, -0.17), m.concrete);
-      if (hi < half - 1e-6) addSweep(deck, p, q, rect(hi, half, -c.asphalt, -0.17), m.concrete);
+      addSweep(deck, p, q, rect(lo, hi, 0, -0.17), c.laneCount ? m.asphalt : m.concrete).name = 'Approach pavement';
+      if (lo > -half + 1e-6) addSweep(deck, p, q, rect(-half, lo, -c.asphalt, -0.17), m.concrete).name = 'Approach pavement';
+      if (hi < half - 1e-6) addSweep(deck, p, q, rect(hi, half, -c.asphalt, -0.17), m.concrete).name = 'Approach pavement';
     }
     addSidewalks(a, b);
     if (innerOnApproach)
@@ -980,7 +1097,7 @@ export function buildBridge(c, m, { batch = true } = {}) {
     const target = start ? -fills.extent / 2 : fills.extent / 2;
     for (const mesh of deck.children.slice(first)) if (mesh.isMesh) clipMeshAtCut(mesh, target, start);
   }
-  const waters = addEnvironment(c, m, setting, fills);
+  const waters = site ? addEnvironment(c, m, setting, fills) : [];
   // Water marks on piers standing in the (first) river.
   const stain = m.concrete.userData.stain;
   if (stain) {
@@ -992,7 +1109,7 @@ export function buildBridge(c, m, { batch = true } = {}) {
       stain.half.value = axis.half + 2;
     }
   }
-  const lighting = c.lighting === 'none' ? null : buildLighting(c, m, fills.ranges);
+  const lighting = c.lighting === 'none' || !site ? null : buildLighting(c, m, fills.ranges);
   if (lighting) {
     root.add(lighting.group);
     lighting.setOn(false);

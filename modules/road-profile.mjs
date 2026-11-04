@@ -14,6 +14,22 @@ import { frame, profile, stations, totalLength } from './geometry.mjs';
 // The abutment seat is 1.8 m thick, centred on the bearing line: its front face is 0.9 m towards the span.
 export const FRONT_FACE = 0.9;
 
+// 0.6.6: model point (three.js x, y, z) → project coordinates (X east, Y north, Z elevation) of the road profile:
+// the west axis on the profile grade line takes X0, Y0 and the datum elevation; the alignment leaves it on the
+// bearing. The IFC export uses the same frame, so the model lands where the CSV says.
+export function projectFrame(c, { datum = 30, x0 = 0, y0 = 0, bearing = 90 } = {}) {
+  const u = c.crownOffset ?? 0,
+    origin = frame(c, FRONT_FACE, u),
+    turn = (bearing * Math.PI) / 180 - Math.atan2(origin.tx, -origin.tz),
+    [cos, sin] = [Math.cos(turn), Math.sin(turn)],
+    base = profile(c, FRONT_FACE);
+  return (x, y, z) => {
+    const e = x - origin.x,
+      n = origin.z - z;
+    return [x0 + e * cos + n * sin, y0 - e * sin + n * cos, datum + y - base];
+  };
+}
+
 export function profileTable(c, { step = 5, datum = 30, x0 = 0, y0 = 0, bearing = 90 } = {}) {
   if (!(step > 0)) throw Error('Use a chainage step greater than 0 m.');
   // Points on the profile grade line (the crown line), turned so the tangent at the west axis takes the bearing.

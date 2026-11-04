@@ -2,7 +2,7 @@
 
 **Try it online:** [BridgeSketch 3D on GitHub Pages](https://acheruel.github.io/BridgeSketch-3D/)
 
-**A quick visual tool for bridge concepts** · Version 0.6.5 · 31 October 2026 · Anthony Chéruel
+**A quick visual tool for bridge concepts** · Version 0.6.6 · 4 November 2026 · Anthony Chéruel
 
 BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a span arrangement, deck, supports and site, then inspect the result from above, below or along the obstacle being crossed. It runs in the browser from static files, with no account, backend or build step.
 
@@ -10,14 +10,27 @@ BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a
 
 ## Features
 
-- **Bridge systems:** steel plate girders, NEBT precast, steel and concrete boxes, solid slabs, frames.
+- **Bridge systems:** steel plate girders, NEBT precast, steel and concrete boxes, solid slabs, frames, arches and steel truss footbridges.
 - **Alignment:** curves, skew, crossfall and vertical profiles.
 - **Supports:** wall, hammerhead, bent, portal and V piers, plus abutments.
 - **Site:** rivers, roads, railways, open ground, terrain, weather and time of day.
 - **Presentation:** bloom, sky, traffic and birds.
 - **Parameters:** collapsible sections and formulas in numeric fields, such as `=12*3`.
 - **History:** undo and redo with Ctrl+Z / Ctrl+Y.
-- **Files and export:** save and open JSON, share link, PNG snapshot and GLB export.
+- **Files and export:** save and open JSON, share link, PNG snapshot, GLB export and IFC export (2x3, 4, 4.3).
+
+## What's new in 0.6.6
+
+- **IFC export (File › Export IFC…):** every member becomes an IFC element with its class (beam, slab, wall, column, footing, railing, member, plate, bearing), a name, a material, a colour and a property set (role, span or support, chainage, paint), in the coordinates of the road profile. Three schemas: **IFC 2x3** opens as a project in Revit 2022, 2023 and 2026; **IFC 4** links into Revit and suits most viewers; **IFC 4.3** adds IfcBridge, its superstructure, abutment and pier parts, and IfcBearing. The geometry is faceted concept geometry, not parametric families.
+- **Steel truss footbridges:** a new structural system for cyclist and pedestrian bridges, with the deck between the bottom chords. Pony (open top, knee braces) or through (top struts, X bracing, portal struts); Warren, Pratt or Howe web; post spacing, truss height and cross-beam spacing; simple or continuous spans, each truss ending with an inclined end post. New example: **Truss footbridge · 2 spans**.
+- **Architectural formliner:** abutments can carry vertical ribs of varied widths, 40 mm proud, on the front wall, return or wing walls and girder screens (Supports › Abutments). On by default in the Fall river example.
+- **Realistic vehicles:** new procedural cars, SUVs, pickups, vans, box trucks and long-nose tractors, with rounded bodies, real wheel arches, tinted glass, alloy wheels and light clusters, replacing the toy-like kit cars.
+- **View menu:** weather (clear, rain, snow, leaves) and birds moved into the top-right menu, which now stays open while you choose; the time of day has its own bar below it.
+- **Traffic:** a cyclist rides every sidewalk, and on two or more lanes in one direction the left lane runs a little faster.
+- **Details:** bearing plinths have no chamfer on their bottom edges; the urban setting is shelved (files that used it open as rural).
+- **Sketchy:** the lane-line hideout is closed (the heron watches it too), leaving a roof gives a few blinking frames of shield, and free roam gains a charged super jump (hold Space, up to 19 m: from the bank onto the deck), flight with a cape (F; Space up, Shift down) and an unstoppable frog who bonks every car and cyclist he meets and bounces off trains.
+
+![Steel truss footbridge](screenshots/truss.webp)
 
 ## What's new in 0.6.5
 
@@ -89,7 +102,7 @@ BridgeSketch 3D is released under the [MIT License](LICENSE) · © 2026 Anthony 
 
 ## Credits and licences
 
-- **Kenney** (CC0 1.0): [Car Kit 3.1](https://kenney.nl/assets/car-kit), [Train Kit](https://kenney.nl/assets/train-kit), [City Kit Suburban](https://kenney.nl/assets/city-kit-suburban) and [City Kit Commercial](https://kenney.nl/assets/city-kit-commercial).
+- **Kenney** (CC0 1.0): [Train Kit](https://kenney.nl/assets/train-kit), [City Kit Suburban](https://kenney.nl/assets/city-kit-suburban) and [City Kit Commercial](https://kenney.nl/assets/city-kit-commercial). Vehicles up to 0.6.5 came from [Car Kit 3.1](https://kenney.nl/assets/car-kit); since 0.6.6 they are procedural.
 - **Poly Haven** (CC0 1.0): rough concrete, asphalt, concrete wall and leafy grass textures.
 - **Other CC0 textures:** river water from [Hazmat Harry](https://opengameart.org/content/seamless-water-tiles) and [qubodup](https://opengameart.org/content/3-live-proceduraly-generated-tiling-water-textures-512px-running-brushes) on OpenGameArt; bark from ambientCG.
 - **MIT:** [Three.js](https://github.com/mrdoob/three.js); [EZ-Tree](https://github.com/dgreenheck/ez-tree) by Daniel Greenheck (tree generator, with `webgl-noise` by Ashima Arts); [CK42BB procedural stars](https://github.com/CK42BB/procedural-stars-threejs) and [procedural grass](https://github.com/CK42BB/procedural-grass-threejs); [Tw1ddle Sky-Shader](https://github.com/Tw1ddle/Sky-Shader) (physical sky); Steve245270533 three-stylized (grass shading ideas).

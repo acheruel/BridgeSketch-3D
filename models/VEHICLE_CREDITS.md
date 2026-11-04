@@ -1,18 +1,13 @@
 # Vehicle models
 
-The sedan, SUV, hatchback, pickup, van, delivery truck and tractor-cab geometry
-is adapted from **Car Kit 3.1**, created and distributed by **Kenney**.
+Since 0.6.6 the cars, SUVs, pickups, vans, box trucks and tractors are procedural models written for
+BridgeSketch 3D (`modules/car-models.mjs`, MIT like the rest of the app): lofted bodies with real wheel arches,
+greenhouses with tumblehome, alloy wheels, light clusters, grilles and mirrors, at about 7 000 to 11 000
+triangles per vehicle. The semi-trailer, the double (train routier) trailers and the cyclists are procedural too
+(`modules/vehicles.mjs`).
 
-- Source: https://kenney.nl/assets/car-kit
-- Downloaded: 2026-09-22
-- Licence: Creative Commons Zero (CC0 1.0 Universal)
-- Licence details: https://creativecommons.org/publicdomain/zero/1.0/
-- Author: https://kenney.nl/
+Earlier versions (0.5 to 0.6.5) used Car Kit 3.1 by Kenney (CC0 1.0, https://kenney.nl/assets/car-kit). Kenney's
+Train Kit and City Kits are still used for the trains and the shelved urban setting (see SCENE_CREDITS.md); their
+licence is retained in KENNEY-LICENSE.txt.
 
-Modifications for BridgeSketch 3D: metre-scale proportions, +X orientation,
-automotive paint/glass/rubber/metal materials, clean truck bodywork, a detailed
-semi-trailer and conversion of OBJ geometry into local ES-module mesh data.
-Tyres preserve circular proportions when the vehicle body is rescaled.
-
-All meshes are bundled locally. There are no external asset requests at runtime.
-The original supplied licence is retained in KENNEY-LICENSE.txt.
+All meshes are generated locally. There are no external asset requests at runtime.

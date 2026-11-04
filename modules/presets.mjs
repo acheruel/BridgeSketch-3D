@@ -1,6 +1,6 @@
 import { defaults, validate, fitBoxLayoutFromBottom } from './geometry.mjs';
 
-// Seven complete starting concepts; each selection resets every parameter.
+// Eight complete starting concepts; each selection resets every parameter.
 export const presets = [
   {
     "id": "river",
@@ -51,6 +51,8 @@ export const presets = [
       "frontSlope": true,
       "frontSlopeMaterial": "stone",
       "approachConeMaterial": "stone",
+      // 0.6.6: architectural formliner on the abutments.
+      "abutmentFinish": "formliner",
       "terrainMode": "fall",
       "sceneWidth": 300,
       "timeOfDay": 14.5,
@@ -99,8 +101,8 @@ export const presets = [
   },
   {
     "id": "box",
-    "label": "Rainy city · 4 curved boxes",
-    "description": "Four continuous curved steel-box spans on single-column hammerheads over city roads and a railway; 3 % crossfall.",
+    "label": "Rainy crossing · 4 curved boxes",
+    "description": "Four continuous curved steel-box spans on single-column hammerheads over roads and a railway; 3 % crossfall.",
     "config": {
       ...defaults,
       "hammerheadShape": "oblong",
@@ -129,7 +131,6 @@ export const presets = [
       "radius": 180,
       "elevation": 8.6,
       "approach": 28,
-      "environment": "urban",
       "sceneWidth": 130,
       "timeOfDay": 14,
       "seed": 31,
@@ -207,6 +208,59 @@ export const presets = [
           "length": 45,
           "obstacle": "water",
           "width": 30,
+          "elevation": 0,
+          "angle": 90
+        }
+      ]
+    }
+  },
+  {
+    "id": "truss",
+    "label": "Truss footbridge · 2 spans",
+    "description": "0.6.6: a continuous steel through truss (Warren with posts) for cyclists and pedestrians, two 36 m spans over a river.",
+    "config": {
+      ...defaults,
+      "width": 4.6,
+      "overhang": 0.3,
+      "girders": 2,
+      "material": "steel",
+      "depth": 0.5,
+      "steelColor": "green",
+      "barrierType": "steel",
+      "leftRailing": "20C",
+      "rightRailing": "20C",
+      "approachBarrier": "extend",
+      "laneCount": 1,
+      "laneWidth": 2.4,
+      "trafficMode": "cyclists",
+      "continuous": true,
+      "pierType": "wall",
+      "wallThickness": 1.2,
+      "wallEnds": "round",
+      "elevation": 7.5,
+      "rise": 0.5,
+      "approach": 22,
+      "sceneWidth": 130,
+      "timeOfDay": 10.5,
+      "seed": 52,
+      "structureSystem": "truss",
+      "trussType": "through",
+      "trussPattern": "warren",
+      "trussPanel": 4,
+      "trussHeight": 4.2,
+      "trussBraceSpacing": 4,
+      "spans": [
+        {
+          "length": 36,
+          "obstacle": "water",
+          "width": 44,
+          "elevation": 0,
+          "angle": 90
+        },
+        {
+          "length": 36,
+          "obstacle": "water",
+          "width": 44,
           "elevation": 0,
           "angle": 90
         }

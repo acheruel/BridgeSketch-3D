@@ -606,3 +606,28 @@
     top: 60px;
   }
 }
+
+/* 0.6.6 · Free roam: its own help line, the super-jump charge on the leap meter and a Fly button on touch screens. */
+.sk:not(.roam) .sk-roam-only,
+.sk:not(.roam) .sk-pad-fly {
+  display: none;
+}
+.sk.roam .sk-help.sk-arcade {
+  display: none;
+}
+.sk-leap.charging {
+  --sk-green: #ff8a3d;
+  transform: scale(1.1);
+  box-shadow: 0 0 0 3px #ffb36b66;
+}
+@media (pointer: coarse) {
+  .sk-pad .sk-pad-fly {
+    grid-area: 1 / 4 / 2 / 5;
+    justify-self: end;
+    width: 70px;
+    pointer-events: auto;
+    font-weight: 800;
+    text-transform: uppercase;
+    background: #b81f33d9;
+  }
+}

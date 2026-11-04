@@ -302,6 +302,54 @@ export function createSketchy() {
   stars.visible = false;
   root.add(stars);
 
+  // 0.6.6: a little hero cape for flying in free roam: red satin, gold trim, tied at the back of the neck. Its cloth
+  // is a 6 × 10 grid whose vertices are posed every frame: hanging behind the back at rest, streaming and
+  // rippling in flight.
+  const CAPE = { w: 0.34, flare: 0.5, l: 0.46, cols: 6, rows: 10 },
+    capeGeo = new T.PlaneGeometry(1, 1, CAPE.cols, CAPE.rows),
+    // The posed grid faces the frog with its front side: the lining is the front, the red satin the back side.
+    capeMats = [
+      new T.MeshStandardMaterial({ color: '#8f1424', roughness: 0.6, side: T.FrontSide }),
+      new T.MeshPhysicalMaterial({ color: '#e0283c', roughness: 0.42, sheen: 0.6, sheenColor: new T.Color('#ff8a96'), side: T.BackSide }),
+    ],
+    cape = new T.Group(),
+    clasp = mesh(new T.SphereGeometry(0.03, 12, 8), M.hat, 'Cape clasp');
+  cape.name = 'Sketchy cape';
+  for (const mat of capeMats) cape.add(mesh(capeGeo, mat, 'Cape cloth'));
+  const neck = onBody(0, 0.5, -1);
+  cape.position.copy(neck.p).addScaledVector(neck.n, 0.012);
+  clasp.position.set(0, 0.012, 0.012);
+  cape.add(clasp);
+  const trim = mesh(new T.TorusGeometry(0.15, 0.012, 6, 24, Math.PI), M.hat, 'Cape collar');
+  trim.rotation.set(Math.PI / 2, 0, Math.PI);
+  trim.position.set(0, 0.005, 0.07);
+  cape.add(trim);
+  cape.visible = false;
+  body.add(cape);
+  const capeState = { on: 0, target: 0, stream: 0 };
+  function poseCape(dt, t, flying, speed) {
+    capeState.on = damp(capeState.on, capeState.target, 6, dt);
+    cape.visible = capeState.on > 0.02;
+    if (!cape.visible) return;
+    capeState.stream = damp(capeState.stream, flying ? Math.min(1, 0.35 + speed / 12) : 0, 3, dt);
+    const pos = capeGeo.attributes.position,
+      grow = smooth(capeState.on);
+    for (let i = 0; i < pos.count; i++) {
+      const col = i % (CAPE.cols + 1),
+        row = Math.floor(i / (CAPE.cols + 1)),
+        u = col / CAPE.cols - 0.5,
+        v = row / CAPE.rows;
+      // Angle below the horizontal: 58° hanging, 8° streaming; the cloth curls a little towards the tip.
+      const angle = (1 - capeState.stream) * 1.01 + capeState.stream * 0.14 + 0.25 * v * (1 - capeState.stream),
+        len = CAPE.l * v * grow,
+        wave = (0.02 + 0.05 * capeState.stream) * v * Math.sin(t * (4 + 8 * capeState.stream) - v * 7 + u * 2.4),
+        x = u * CAPE.w * (1 + CAPE.flare * v) * (0.55 + 0.45 * grow) + 0.012 * Math.sin(t * 5 + v * 5) * v;
+      pos.setXYZ(i, x, -Math.sin(angle) * len + wave * Math.cos(angle), -Math.cos(angle) * len - wave * Math.sin(angle) - 0.02 * Math.abs(u) * v);
+    }
+    pos.needsUpdate = true;
+    capeGeo.computeVertexNormals();
+  }
+
   const shadow = blobShadow();
   const state = {
     time: Math.random() * 10,
@@ -361,7 +409,12 @@ export function createSketchy() {
     cheer() {
       state.happy = 0.6;
     },
-    // Called every frame. pose: { air: 0–1 hop phase or null, big, flip, swim, flat: 0–1, moving, landed }
+    // 0.6.6: the flying cape grows out of the collar (true) or folds away (false).
+    setCape(on) {
+      capeState.target = on ? 1 : 0;
+    },
+    // Called every frame. pose: { air: 0–1 hop phase or null, big, flip, swim, flat: 0–1, moving, landed,
+    // charge: 0–1 crouch before a super jump, fly: flying (speed in m/s) or undefined }
     animate(dt, pose = {}) {
       const s = state;
       s.time += dt;
@@ -379,15 +432,23 @@ export function createSketchy() {
       s.hat += s.hatV * dt;
       // Flattened by a vehicle: a pancake with dizzy stars, then a springy recovery.
       s.flat = damp(s.flat, pose.flat ?? 0, pose.flat ? 30 : 9, dt);
-      const breathe = 1 + 0.018 * Math.sin(t * 5.2),
-        sy = (1 + s.spring) * (1 - 0.86 * s.flat),
-        sxz = (1 / Math.sqrt(Math.max(0.3, 1 + s.spring))) * (1 + 0.75 * s.flat);
+      const charge = pose.charge ?? 0,
+        breathe = 1 + 0.018 * Math.sin(t * 5.2) + 0.03 * charge * Math.sin(t * 40),
+        sy = (1 + s.spring) * (1 - 0.86 * s.flat) * (1 - 0.32 * charge),
+        sxz = (1 / Math.sqrt(Math.max(0.3, 1 + s.spring))) * (1 + 0.75 * s.flat) * (1 + 0.14 * charge);
       s.squeezeV += (-220 * s.squeeze - 12 * s.squeezeV) * dt;
       s.squeeze += s.squeezeV * dt;
       squash.scale.set(sxz * breathe * (1 - 0.45 * Math.max(0, s.squeeze)), sy * (1 + 0.25 * Math.max(0, s.squeeze)), sxz * (2 - breathe));
       throat.scale.set(0.13, 0.085, 0.1).multiplyScalar(1 + (pose.air == null && !pose.swim ? 0.22 * Math.max(0, Math.sin(t * 3.1)) ** 4 : 0));
       // Body pitch: nose up on take-off, down before landing; leaning forward while swimming.
-      const pitchTarget = pose.air != null ? -0.38 + 0.68 * pose.air : pose.swim ? 0.28 : 0;
+      const flying = pose.fly != null,
+        pitchTarget = flying
+          ? 0.35 + 0.75 * Math.min(1, pose.fly / 10)
+          : pose.air != null
+            ? -0.38 + 0.68 * pose.air
+            : pose.swim
+              ? 0.28
+              : -0.25 * charge;
       s.pitch = damp(s.pitch, pitchTarget, 14, dt);
       body.rotation.x = s.pitch;
       flip.rotation.x = pose.air != null && pose.flip ? 2 * Math.PI * smooth(Math.min(1, pose.air * 1.15)) : 0;
@@ -396,6 +457,11 @@ export function createSketchy() {
       if (s.flat > 0.05) {
         setLegs(1, 0.9);
         setArms(0.2);
+      } else if (flying) {
+        // Superhero pose: arms reaching forward, legs streaming behind with a lazy kick.
+        const k = Math.sin(t * 3);
+        setLegs(0.95, 0.12, [0.05 * k, -0.05 * k]);
+        setArms(1, [0.15 * Math.sin(t * 2), -0.15 * Math.sin(t * 2)]);
       } else if (pose.swim) {
         const k = Math.sin(t * 7.5);
         setLegs(0.45, 0.35, [0.35 * k, -0.35 * k]);
@@ -439,6 +505,7 @@ export function createSketchy() {
           st.position.set(Math.cos(a) * 0.32, 0.22 + 0.04 * Math.sin(t * 6 + i), Math.sin(a) * 0.32);
           st.rotation.set(0, -a, t * 4);
         });
+      poseCape(dt, t, flying, pose.fly ?? 0);
       // Tongue: out in 0.07 s, back in 0.12 s.
       if (s.tongue) {
         s.tongue.t += dt;
@@ -461,6 +528,7 @@ export function createSketchy() {
       shadow.material.map.dispose();
       shadow.material.dispose();
       for (const m of Object.values(M)) m?.dispose?.();
+      for (const m of capeMats) m.dispose();
     },
   };
 }

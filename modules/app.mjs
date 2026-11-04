@@ -25,6 +25,10 @@ import {
   crossfallSection,
   stations,
   frame,
+  TRUSS_DEPTH,
+  TRUSS_OVER,
+  trussChord,
+  trussInset,
 } from './geometry.mjs';
 import { psboxParts } from './systems.mjs';
 import { profileCsv, profileTable, frenchNumber } from './road-profile.mjs';
@@ -224,7 +228,8 @@ function initWorkspace() {
     $('focus').setAttribute('aria-pressed', focus);
     $('focus').querySelector('span').textContent = focus ? 'Parameters' : 'Focus';
   };
-  // 0.6.5: the view dock (QuickerAtlas « Couches »): opens on click, closes on a click outside or Escape.
+  // 0.6.5: the view dock (QuickerAtlas « Couches »). 0.6.6: it stays open while views, weather and switches are
+  // chosen (and while the scene is orbited); only its button or Escape closes it.
   const dock = $('dock'),
     dockOpen = open => {
       $('dock-panel').hidden = !open;
@@ -232,9 +237,6 @@ function initWorkspace() {
       dock.classList.toggle('open', open);
     };
   $('dock-button').onclick = () => dockOpen($('dock-panel').hidden);
-  document.addEventListener('pointerdown', e => {
-    if (!$('dock-panel').hidden && !dock.contains(e.target)) dockOpen(false);
-  });
   dock.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !$('dock-panel').hidden) {
       e.stopPropagation();
@@ -242,8 +244,15 @@ function initWorkspace() {
       $('dock-button').focus();
     }
   });
-  // A new view closes the dock so the result shows at once; the switches keep it open.
-  dock.querySelectorAll('[data-view], #drive').forEach(b => b.addEventListener('click', () => dockOpen(false)));
+  // 0.6.6: weather buttons drive the (hidden) weather field of the parameters form.
+  dock.querySelectorAll('[data-weather]').forEach(b =>
+    b.addEventListener('click', () => {
+      if (form.elements.weather.value === b.dataset.weather) return;
+      form.elements.weather.value = b.dataset.weather;
+      syncWeatherButtons();
+      form.dispatchEvent(new Event('change'));
+    }),
+  );
   $('activeSpan').onchange = selectSpan;
   // Formula-capable numeric fields, File menu, keyboard shortcuts and the undo / redo buttons.
   setupNumericInputs(form, {
@@ -314,8 +323,13 @@ function refreshForm() {
     )
     .join('');
   syncWaterFields();
+  syncWeatherButtons();
   syncEnabled();
   if (activeKey) form.querySelector(activeKey)?.focus({ preventScroll: true });
+}
+function syncWeatherButtons() {
+  for (const b of document.querySelectorAll('[data-weather]'))
+    b.setAttribute('aria-pressed', b.dataset.weather === form.elements.weather.value);
 }
 function syncWaterFields() {
   config.spans.forEach((span, i) => {
@@ -351,9 +365,15 @@ function syncEnabled() {
   $('crown-offset-label').hidden = config.crossfall === 'flat';
   form.elements.crownOffset.min = String(-config.width / 2);
   form.elements.crownOffset.max = String(config.width / 2);
-  form.elements.girderScreens.disabled = !['concrete', 'steel', 'box'].includes(config.material);
+  form.elements.girderScreens.disabled = !['concrete', 'steel', 'box'].includes(config.material) || config.structureSystem === 'truss';
   form.elements.archRise.disabled = config.archType !== 'tied';
   $('strut-fields').hidden = system !== 'strutted';
+  // 0.6.6: steel truss footbridges: the trusses replace the girders (always steel, two trusses, fixed depth).
+  const truss = system === 'truss';
+  $('truss-fields').hidden = !truss;
+  form.elements.structureSystem.querySelector('[value="truss"]').disabled = config.trafficMode !== 'cyclists';
+  form.elements.material.disabled = truss;
+  form.elements.depth.disabled = truss;
   // Frames are monolithic concrete: solid slab or prestressed box only.
   for (const option of form.elements.material.options)
     option.disabled = (system === 'frame' || system === 'strutted') && !['slab', 'psbox'].includes(option.value);
@@ -366,9 +386,9 @@ function syncEnabled() {
   $('flange-note').hidden = !steel;
   $('box-bottom-width-label')?.toggleAttribute('hidden', !box);
   for (const name of ['girders', 'overhang'])
-    form.elements[name].disabled = slab || psbox || (box && name === 'overhang');
+    form.elements[name].disabled = slab || psbox || truss || (box && name === 'overhang');
   // Precast NEBT girders have a constant depth: no variable-depth option.
-  $('variable-depth-fields').hidden = config.material === 'concrete';
+  $('variable-depth-fields').hidden = config.material === 'concrete' || truss;
   form.elements.variableDepth.disabled = config.material === 'concrete';
   form.elements.pierDepth.disabled = !config.variableDepth;
   form.elements.taper.disabled = !config.variableDepth;
@@ -454,7 +474,9 @@ function syncEnabled() {
   form.elements.direction.disabled = !config.curved;
   form.elements.rise.disabled = config.profile !== 'crest';
   form.elements.grade.disabled = config.profile !== 'constant';
-  $('material-note').textContent = psbox
+  $('material-note').textContent = truss
+    ? `Two steel ${config.trussType} trusses (${config.trussPattern}); the deck rests on floor beams between the bottom chords`
+    : psbox
     ? `Prestressed concrete ${config.psboxCount > 1 ? config.psboxCount + ' single-cell boxes' : 'box · ' + (config.width > 16 ? 'two cells' : 'one cell')}, inclined webs, depth from the deck top`
     : slab
     ? config.variableDepth
@@ -507,7 +529,7 @@ function updateGroupMeta() {
     'deck-rail': `${c.leftRailing} / ${c.rightRailing}`,
     'deck-approach': label('approachBarrier'),
     'deck-light': c.lighting === 'none' ? 'Off' : `${label('lighting')} · ${c.lightSpacing} m`,
-    'str-system': label('structureSystem'),
+    'str-system': c.structureSystem === 'truss' ? `${label('trussType')} ${label('trussPattern')} truss` : label('structureSystem'),
     'str-type': label('material'),
     'str-dim': c.material === 'slab' ? `${c.slabDepth} m` : c.material === 'concrete' ? `NEBT ${Math.round(c.depth * 1000)}` : `${c.depth} m`,
     'str-depth': `${c.variableDepth ? 'Variable' : 'Constant'}${c.continuous ? ' · continuous' : ''}`,
@@ -520,13 +542,13 @@ function updateGroupMeta() {
     'sup-portal': c.portalBeam ? 'With tie beam' : 'No tie beam',
     'sup-vshape': `${c.vAngle}° · ${c.vArmThickness} m`,
     'sup-hammerhead': `${c.hammerheadWidth} × ${c.hammerheadThickness} m`,
-    'sup-abut': `${label('abutmentType')}${c.approachWalls === 'mse' ? ' · MSE' : ''}`,
+    'sup-abut': `${label('abutmentType')}${c.abutmentFinish === 'formliner' ? ' · formliner' : ''}${c.approachWalls === 'mse' ? ' · MSE' : ''}`,
     'sup-slope': c.approachWalls === 'mse' ? 'n/a' : c.frontSlope ? 'Slope on' : 'Slope off',
     'site-cross': kinds,
     'site-terrain': `${label('terrainShape')} · ${label('terrainMode')}`,
     'site-env': `${label('environment')} · seed ${c.seed}`,
     'site-river': label('waterStyle'),
-    'site-sky': `${label('skyMode')} · ${label('weather')}${c.birds === false ? '' : ' · birds'}`,
+    'site-sky': `${label('skyMode')} · ${label('skyModel')}`,
     'site-render': `${label('renderQuality')}${c.bloom ? ' · glow' : ''}`,
   };
   for (const el of document.querySelectorAll('[data-meta]')) el.textContent = meta[el.dataset.meta] ?? '';
@@ -640,7 +662,7 @@ function applyTimeOfDay(hour, flowing = false) {
   $('timeOfDay').value = hour;
   // 0.6.5: whole minutes first, so 14:59.7 reads 15:00 rather than 14:60.
   const minutes = Math.round(hour * 60) % 1440;
-  $('timeLabel').textContent = $('dock-time').textContent =
+  $('timeLabel').textContent =
     String(Math.floor(minutes / 60)).padStart(2, '0') + ':' + String(minutes % 60).padStart(2, '0');
   needsRender = true;
 }
@@ -726,8 +748,9 @@ function renderSection() {
   sectionZoom.width = svgWidth;
   svg.setAttribute('viewBox', sectionViewBox());
   // Drawing band 110–470 px leaves room for the heading, dimension chains and title block.
-  const lo = Math.min(bottom + lowestCross(c) - 1.05, -2),
-    hi = 2.75,
+  const truss = c.structureSystem === 'truss',
+    lo = Math.min(bottom + lowestCross(c) - 1.05, -2),
+    hi = truss ? Math.max(2.75, c.trussHeight - 0.2) : 2.75,
     k = Math.min((svgWidth - 60) / (c.width + 2.4), 360 / (hi - lo)),
     cy = 290 + (k * (hi + lo)) / 2;
   const poly = (points, fill, stroke = '#344a50', sheared = true) =>
@@ -761,6 +784,31 @@ function renderSection() {
         [half, -0.065],
         [half, -0.065 - c.deck],
         [-half, -0.065 - c.deck],
+      ],
+      '#b9b6aa',
+    );
+  } else if (truss) {
+    // 0.6.6: steel truss: floor beam under the slab between the bottom chords, the chords and a post in elevation
+    // behind the cut; a through truss adds its top strut.
+    const tu = half - TRUSS_OVER,
+      cw = trussChord(c),
+      axis = -0.065 - c.deck - 0.05 - TRUSS_DEPTH + cw / 2,
+      paint = steelFinishes[c.steelColor] ?? c.steelColor,
+      inner = tu - cw / 2;
+    drawing += rectangle(-inner, inner, -0.065 - c.deck, -0.065 - c.deck - 0.4, paint);
+    for (const side of [-1, 1]) {
+      const u = side * tu;
+      drawing += rectangle(u - 0.09, u + 0.09, axis + c.trussHeight, axis, '#d8dcdc');
+      for (const y of [axis, axis + c.trussHeight]) drawing += rectangle(u - cw / 2, u + cw / 2, y + cw / 2, y - cw / 2, paint);
+    }
+    if (c.trussType === 'through')
+      drawing += rectangle(-tu, tu, axis + c.trussHeight + 0.125, axis + c.trussHeight - 0.125, paint);
+    drawing += concrete(
+      [
+        [-inner, -0.065],
+        [inner, -0.065],
+        [inner, -0.065 - c.deck],
+        [-inner, -0.065 - c.deck],
       ],
       '#b9b6aa',
     );
@@ -921,9 +969,10 @@ function renderSection() {
       result += rectangle(u - 0.075, u + 0.075, curb + y + 0.04, curb + y - 0.04, '#879597');
     return result;
   };
+  const railEdge = truss ? half - trussInset(c) : half;
   drawing +=
-    railing(-half, -1, c.leftRailing, road.left ? walkTop(-1, -half) : null) +
-    railing(half, 1, c.rightRailing, road.right ? walkTop(1, half) : null);
+    railing(-railEdge, -1, c.leftRailing, road.left ? walkTop(-1, -half) : null) +
+    railing(railEdge, 1, c.rightRailing, road.right ? walkTop(1, half) : null);
   if (c.sidewalkRailing !== 'none')
     for (const [side, on] of [
       [-1, road.left],
@@ -986,7 +1035,7 @@ function renderSection() {
     bx = svgWidth - 300,
     escape = t => t.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
   const titleBlock = `<g font-size="12" fill="#17374b"><rect x="${bx}" y="492" width="280" height="92" fill="#fff" stroke="#17374b" stroke-width="1.2"/><line x1="${bx}" x2="${bx + 280}" y1="518" y2="518" stroke="#17374b"/><line x1="${bx}" x2="${bx + 280}" y1="540" y2="540" stroke="#8aa1a7"/><line x1="${bx}" x2="${bx + 280}" y1="562" y2="562" stroke="#8aa1a7"/><text x="${bx + 10}" y="510" font-size="13" font-weight="600">${escape(c.name || 'Unnamed variant')}</text><text x="${bx + 10}" y="533">Transverse section · station ${s.toFixed(2)} m</text><text x="${bx + 10}" y="555">${escape(release.name)} v${release.version} · ${today}</text><text x="${bx + 10}" y="577">Dimensions in metres</text></g>`;
-  svg.innerHTML = `<title>Transverse deck section at station ${s.toFixed(2)} metres</title><g transform="translate(${svgWidth / 2} ${cy}) scale(${k} ${-k})">${drawing}</g><text x="30" y="54" fill="#17374b" font-size="22" font-weight="600">TRANSVERSE DECK SECTION</text><text x="30" y="83" fill="#557279" font-size="15">Station ${s.toFixed(2)} m · Deck ${c.width.toFixed(2)} m · ${c.material === 'box' ? 'Steel box' : c.material === 'steel' ? 'Steel plate' : c.material === 'slab' ? 'Concrete slab' : c.material === 'psbox' ? 'Prestressed concrete box' : 'Concrete NEBT'} · Depth ${actualDepth.toFixed(2)} m</text><text x="30" y="575" fill="#557279" font-size="14">Looking toward bridge end · Left / right follow alignment</text>${dims}${titleBlock}`;
+  svg.innerHTML = `<title>Transverse deck section at station ${s.toFixed(2)} metres</title><g transform="translate(${svgWidth / 2} ${cy}) scale(${k} ${-k})">${drawing}</g><text x="30" y="54" fill="#17374b" font-size="22" font-weight="600">TRANSVERSE DECK SECTION</text><text x="30" y="83" fill="#557279" font-size="15">Station ${s.toFixed(2)} m · Deck ${c.width.toFixed(2)} m · ${truss ? `Steel ${c.trussType} truss, ${c.trussHeight.toFixed(2)} m` : c.material === 'box' ? 'Steel box' : c.material === 'steel' ? 'Steel plate' : c.material === 'slab' ? 'Concrete slab' : c.material === 'psbox' ? 'Prestressed concrete box' : 'Concrete NEBT'} · Depth ${actualDepth.toFixed(2)} m</text><text x="30" y="575" fill="#557279" font-size="14">Looking toward bridge end · Left / right follow alignment</text>${dims}${titleBlock}`;
 }
 // 0.6.4: span lengths under the Elevation view, a dimension chain like the Section drawing. Supports are projected
 // with the camera, so the chain follows pans and zooms; it sits below the lowest point of the structure.
@@ -1122,7 +1171,7 @@ function rebuild(raw, { resetCamera = false, refresh = false, noHistory = false,
   $('sceneSubtitle').textContent =
     `${config.spans.length} ${config.spans.length === 1 ? 'span' : 'spans'} · ${
       { frame: 'Rigid frame · ', strutted: 'Strutted frame · ', arch: config.archType === 'tied' ? 'Tied ' + config.archMaterial + ' arch · ' : config.archMaterial[0].toUpperCase() + config.archMaterial.slice(1) + ' deck arch · ' }[config.structureSystem] ?? ''
-    }${config.material === 'slab' ? 'Solid concrete slab' : config.material === 'psbox' ? 'Prestressed box girder' : config.material === 'concrete' ? 'NEBT ' + config.depth * 1000 : config.material === 'box' ? 'Steel box girders' : 'Steel plate girders'} · ${config.trafficMode === 'cyclists' ? 'cycling · ' : ''}${config.environment}`;
+    }${config.material === 'slab' ? 'Solid concrete slab' : config.material === 'psbox' ? 'Prestressed box girder' : config.material === 'concrete' ? 'NEBT ' + config.depth * 1000 : config.material === 'box' ? 'Steel box girders' : config.structureSystem === 'truss' ? `Steel ${config.trussType} truss` : 'Steel plate girders'} · ${config.trafficMode === 'cyclists' ? 'cycling · ' : ''}${config.environment}`;
   if (resetCamera) fit(view);
   needsRender = true;
   const updateMs = performance.now() - started;
@@ -1859,8 +1908,9 @@ function flyFrame(time) {
   }
 }
 form.addEventListener('submit', e => e.preventDefault());
-document.querySelector('.view-options').addEventListener('change', e => {
-  if (['showTraffic', 'movingTraffic'].includes(e.target.name)) form.dispatchEvent(new Event('change'));
+// Fields of the parameters form that live in the view dock (form="parameters") do not bubble to the form.
+$('dock-panel').addEventListener('change', e => {
+  if (['showTraffic', 'movingTraffic', 'birds'].includes(e.target.name)) form.dispatchEvent(new Event('change'));
 });
 form.addEventListener('change', async e => {
   if (e.target.id === 'activeSpan') return;
@@ -1936,6 +1986,12 @@ form.addEventListener('change', async e => {
         raw.width = Math.max(raw.width, 7);
       }
       if (e.target.name === 'structureSystem' && raw.structureSystem === 'strutted') raw.variableDepth = true;
+      // 0.6.6: a truss is a footbridge: open it with sensible proportions; each truss type has its own height.
+      if (e.target.name === 'structureSystem' && raw.structureSystem === 'truss') {
+        raw.width = Math.min(Math.max(raw.width, 3.5), 6);
+        raw.trussHeight = raw.trussType === 'pony' ? 1.8 : 4.2;
+      }
+      if (e.target.name === 'trussType') raw.trussHeight = raw.trussType === 'pony' ? 1.8 : 4.2;
       // Leaving the concrete box: back to a regular girder layout.
       if (e.target.name === 'material' && config.material === 'psbox' && ['concrete', 'steel'].includes(raw.material)) {
         raw.overhang = 1.2;
@@ -2175,6 +2231,48 @@ $('image').onclick = async () => {
     reflection.setScale(tier().reflection);
     button.disabled = false;
     needsRender = true;
+  }
+};
+// 0.6.6: IFC export (modules/ifc-export.mjs). The bridge is rebuilt without batching so every member keeps its own
+// mesh and name; coordinates follow the road profile frame (File › Road profile…).
+$('export-ifc').onclick = () => {
+  const o = profileOptions();
+  $('ifcOrigin').textContent = `X ${frenchNumber(o.x0)}, Y ${frenchNumber(o.y0)}, Z ${frenchNumber(o.datum)} m, bearing ${frenchNumber(o.bearing)}°`;
+  try {
+    const saved = localStorage.getItem('bridgesketch-ifc-schema');
+    if (saved) for (const r of document.querySelectorAll('[name="ifcSchema"]')) r.checked = r.value === saved;
+  } catch {}
+  $('ifc-dialog').showModal();
+};
+$('exportIfc').onclick = async () => {
+  const button = $('exportIfc'),
+    schema = document.querySelector('[name="ifcSchema"]:checked')?.value ?? 'IFC2X3';
+  button.disabled = true;
+  button.textContent = 'Exporting…';
+  await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve)));
+  let copy;
+  try {
+    try {
+      localStorage.setItem('bridgesketch-ifc-schema', schema);
+    } catch {}
+    const { exportIfc } = await import('./ifc-export.mjs');
+    copy = buildBridge(config, materials, { batch: false, site: false });
+    const o = profileOptions(),
+      result = exportIfc(config, copy, materials, {
+        schema,
+        origin: { datum: o.datum, x0: o.x0, y0: o.y0, bearing: o.bearing },
+        name: config.name || 'BridgeSketch 3D bridge',
+        version: release.version,
+      });
+    download(new Blob([result.text], { type: 'application/x-step' }), `${fileBase()}-${schema.toLowerCase()}.ifc`);
+    $('ifc-dialog').close();
+    notify(`IFC exported: ${result.elements} elements (${(result.text.length / 1e6).toFixed(1)} MB). Save JSON to keep editable parameters.`);
+  } catch (e) {
+    notify(`IFC export failed: ${e.message}`, true);
+  } finally {
+    if (copy) disposeModel(copy);
+    button.disabled = false;
+    button.textContent = 'Export IFC';
   }
 };
 $('export-glb').onclick = async () => {

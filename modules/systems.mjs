@@ -11,8 +11,12 @@ import {
   psboxLayout,
   stations,
   supportStation,
+  TRUSS_DEPTH,
+  TRUSS_OVER,
+  trussChord,
+  trussInset,
 } from './geometry.mjs';
-import { beam, box, skewPlate, soffitAt, supportPoint, sweep } from './sections.mjs';
+import { beam, box, rect, skewPlate, soffitAt, supportPoint, sweep } from './sections.mjs';
 
 // Swept sections must be clockwise in (u, y).
 const signedArea = p => p.reduce((a, q, i) => a + q[0] * p[(i + 1) % p.length][1] - p[(i + 1) % p.length][0] * q[1], 0);
@@ -335,7 +339,7 @@ export function addArch(c, m, structure, earth, ground = () => -1e3) {
   // Springing blocks at both supports.
   for (const s of [a, b]) {
     const f = frame(c, supportStation(c, s, 0), 0);
-    box(group, m.concrete, f.x, spring - 1.2, f.z, 4.5, 3, 2 * ribU + 3, -Math.atan2(f.tz, f.tx));
+    box(group, m.concrete, f.x, spring - 1.2, f.z, 4.5, 3, 2 * ribU + 3, -Math.atan2(f.tz, f.tx)).name = 'Arch springing block';
   }
   // Spandrel columns every ~6 m, a cross-beam under the deck on each; the crown region is filled solid.
   const n = Math.max(6, 2 * Math.round(L / 12)),
@@ -376,4 +380,136 @@ export function addArch(c, m, structure, earth, ground = () => -1e3) {
     }
   }
   return { k, rise, spring };
+}
+
+// ─── Steel trusses for footbridges (0.6.6) ────────────────────────────────────────────────────────────────
+// Two trusses with the deck at their bottom chords: a pony truss (low, open top, outrigger knee braces) or a through
+// truss (top struts and X bracing over the path, portal struts at the ends). Warren, Pratt or Howe web; every
+// truss ends with an inclined end post (a diagonal) down to its bearing. Simple spans, or one truss continuous over
+// the piers. Floor beams (traverses) under the slab and the top struts follow the chosen spacing.
+export { TRUSS_OVER, TRUSS_DEPTH, trussChord, trussInset };
+
+// Bearing-to-bearing node stations (centre-line basis) of each truss run; an even panel count in every span.
+export function trussRuns(c) {
+  const ss = stations(c),
+    last = c.spans.length - 1,
+    spans = c.spans.map((_, i) => [ss[i] + (i === 0 ? 0.5 : c.continuous ? 0 : 0.55), ss[i + 1] - (i === last ? 0.5 : c.continuous ? 0 : 0.55)]);
+  const divide = ([a, b]) => {
+    const n = Math.max(2, 2 * Math.round((b - a) / (2 * c.trussPanel)));
+    return Array.from({ length: n + 1 }, (_, k) => a + ((b - a) * k) / n);
+  };
+  if (!c.continuous) return spans.map(range => ({ spans: [divide(range)] }));
+  return [{ spans: spans.map(divide) }];
+}
+
+export function addTruss(c, m, structure) {
+  const group = new T.Group(),
+    half = c.width / 2,
+    tu = half - TRUSS_OVER,
+    cw = trussChord(c),
+    member = c.trussType === 'through' ? 0.24 : 0.2,
+    H = c.trussHeight,
+    through = c.trussType === 'through';
+  group.name = `Steel ${c.trussType} truss · ${c.trussPattern}`;
+  structure.add(group);
+  // Bottom chord axis level (before crossfall) at a station on the truss line u.
+  const chordAxis = (s, u) => profile(c, s) - c.asphalt - c.deck - 0.05 - TRUSS_DEPTH + cw / 2,
+    node = (x, u, rise = 0) => {
+      const s = supportStation(c, x, u),
+        f = frame(c, s, u);
+      return [f.x, chordAxis(s, u) + crossAt(c, u) + rise, f.z];
+    },
+    slabUnder = (x, u) => {
+      const s = supportStation(c, x, u);
+      return profile(c, s) - c.asphalt - c.deck + crossAt(c, u);
+    };
+  const add = (mesh, name) => {
+    mesh.name = name;
+    return mesh;
+  };
+  for (const run of trussRuns(c)) {
+    const all = run.spans.flatMap((nodes, i) => (i ? nodes.slice(1) : nodes)),
+      first = all[0],
+      lastNode = all.at(-1),
+      topStart = run.spans[0][1],
+      topEnd = run.spans.at(-1).at(-2);
+    for (const side of [-1, 1]) {
+      const u = side * tu;
+      // Chords: square hollow sections swept along the alignment (they follow the curve and the profile).
+      const chord = (a, b, rise, name) =>
+        group.add(
+          add(
+            sweep(c, a, b, rect(u - cw / 2, u + cw / 2, cw / 2, -cw / 2), m.steel, (_, s) => chordAxis(s, u) + rise, undefined, u),
+            name,
+          ),
+        );
+      chord(first - 0.15, lastNode + 0.15, 0, 'Truss bottom chord');
+      chord(topStart, topEnd, H, 'Truss top chord');
+      const bar = (p, q, w, name) => add(beam(group, m.steel, p, q, w, w), name);
+      run.spans.forEach((nodes, i) => {
+        const n = nodes.length - 1,
+          B = k => node(nodes[k], u),
+          Tn = k => node(nodes[k], u, H),
+          endA = i === 0,
+          endB = i === run.spans.length - 1;
+        for (let k = 0; k < n; k++) {
+          const left = k < n / 2;
+          let from, to;
+          if (c.trussPattern === 'warren') [from, to] = k % 2 === 0 ? [B(k), Tn(k + 1)] : [Tn(k), B(k + 1)];
+          else if (c.trussPattern === 'pratt') [from, to] = left ? [Tn(k), B(k + 1)] : [B(k), Tn(k + 1)];
+          else [from, to] = left ? [B(k), Tn(k + 1)] : [Tn(k), B(k + 1)];
+          // End posts: an inclined chord-size member from the bearing node to the first top node.
+          const endPost = (k === 0 && endA) || (k === n - 1 && endB);
+          if (endPost) [from, to] = k === 0 ? [B(0), Tn(1)] : [Tn(n - 1), B(n)];
+          bar(from, to, endPost ? cw : member, endPost ? 'Truss end post' : 'Truss diagonal');
+        }
+        // Verticals (posts): every interior node for Pratt and Howe, the top nodes of a Warren; over continuous piers.
+        for (let k = 0; k <= n; k++) {
+          const interior = k > 0 && k < n,
+            overPier = (k === 0 && !endA) || (k === n && !endB);
+          if (!(interior || overPier) || (overPier && k === 0)) continue;
+          if (interior && c.trussPattern === 'warren' && k % 2 === 0) continue;
+          bar(B(k), Tn(k), member * 0.9, overPier ? 'Truss post over pier' : 'Truss post');
+          // Pony truss: outrigger knee brace outside each post (U-frame against lateral buckling of the top chord).
+          if (!through) {
+            const out = node(nodes[k], u + side * 0.7),
+              knee = node(nodes[k], u, H * 0.6);
+            bar(out, knee, 0.12, 'Pony truss knee brace');
+            bar(node(nodes[k], u + side * cw * 0.5), out, 0.16, 'Floor beam outrigger');
+          }
+        }
+      });
+    }
+    // Floor beams (traverses) under the slab between the bottom chords, at the chosen spacing.
+    const count = Math.max(1, Math.round((lastNode - first) / c.trussBraceSpacing));
+    for (let k = 0; k <= count; k++) {
+      const x = first + ((lastNode - first) * k) / count,
+        y = u => slabUnder(x, u) - 0.2,
+        a = node(x, -tu + cw / 2),
+        b = node(x, tu - cw / 2);
+      add(beam(group, m.steel, [a[0], y(-tu), a[2]], [b[0], y(tu), b[2]], 0.2, 0.4), 'Floor beam');
+    }
+    // Through truss: top struts at the top-chord nodes (every k panels for the chosen spacing), X bracing between
+    // them, deeper portal struts over the end posts.
+    if (through) {
+      const tops = run.spans.flatMap((nodes, i) => nodes.slice(i === 0 ? 1 : 0, i === run.spans.length - 1 ? -1 : undefined)),
+        unique = tops.filter((x, k) => k === 0 || x - tops[k - 1] > 1e-6),
+        panel = unique.length > 1 ? unique[1] - unique[0] : c.trussPanel,
+        every = Math.max(1, Math.round(c.trussBraceSpacing / panel)),
+        picked = unique.filter((_, k) => k % every === 0 || k === unique.length - 1);
+      picked.forEach((x, k) => {
+        const portal = k === 0 || k === picked.length - 1,
+          p = node(x, -tu, H),
+          q = node(x, tu, H);
+        add(beam(group, m.steel, p, q, portal ? 0.3 : 0.2, portal ? 0.55 : 0.25), portal ? 'Portal strut' : 'Top strut');
+        if (k > 0) {
+          const r = node(picked[k - 1], -tu, H),
+            t = node(picked[k - 1], tu, H);
+          add(beam(group, m.steel, r, q, 0.07, 0.07), 'Top lateral bracing');
+          add(beam(group, m.steel, t, p, 0.07, 0.07), 'Top lateral bracing');
+        }
+      });
+    }
+  }
+  return group;
 }

@@ -1,8 +1,9 @@
 // BridgeSketch 3D · Sketchy's Bridge Hop (0.6.5, a secret Frogger-style game). Sketchy the frog hops on the bridge
 // and its approaches between the vehicles. Arcade: stay alive on the roadway, squeeze between cars, leapfrog them,
 // surf on their roofs, catch flies and power flies (golden Sketchy who bonks vehicles into the sky, slow motion); a
-// heron snatches a frog that camps on a sidewalk, a shoulder or one spot. Free roam: hop anywhere on the site and
-// swim in the river (Space to swim fast). The app keeps rendering (sky, water, time of day); this module drives the
+// heron snatches a frog that camps on a sidewalk, a shoulder, a lane line or one spot. Free roam: hop anywhere on the
+// site and swim in the river (Space to swim fast); 0.6.6: hold Space for a super jump (up to 19 m, onto the bridge
+// from the bank), F to fly with a cape, and Sketchy bonks every vehicle he meets. The app keeps rendering (sky, water, time of day); this module drives the
 // camera, Sketchy, the HUD, the music and its own deck traffic (the scene's deck vehicles are hidden while it runs).
 import * as T from 'three';
 import { createSketchy } from './sketchy.mjs';
@@ -23,6 +24,12 @@ const HOP = { along: 1.6, time: 0.19, height: 0.45 },
   SHIELD_TIME = 3,
   STILL_LIMIT = 5,
   REFUGE_LIMIT = 2.6,
+  // 0.6.6: a lane line between two traffic lanes is a refuge too, with a little more time (squeezes stay possible).
+  LINE_LIMIT = 3.4,
+  // Super jump (free roam): hold Space up to CHARGE_TIME s for up to SUPER.height m; flying with F.
+  CHARGE_TIME = 1.1,
+  SUPER = { height: 19, reach: 9, gravity: 22 },
+  FLIGHT = { speed: 11, climb: 7, ceiling: 70 },
   POWER_TIME = 5,
   SLOW_TIME = 5,
   SLOW = 0.35,
@@ -63,9 +70,9 @@ export function deckModel(c) {
   if (cycling && lanes.length === 1)
     lanes = [-1, 1].map(k => ({ u: lanes[0].u + (k * lanes[0].width) / 4, width: lanes[0].width / 2, forward: k > 0, kind: 'cyclist' }));
   if (!lanes.length) lanes = [-1, 1].map(k => ({ u: k * 0.45, width: 0.9, forward: k > 0, kind: 'cyclist' }));
-  // Cyclists also ride the wider sidewalks, so a sidewalk is no hiding place.
+  // Cyclists also ride the sidewalks (0.6.6: every sidewalk, by default), so a sidewalk is no hiding place.
   const paths = raised
-    .filter(([a, b]) => b - a >= 2.2 && (a > lay.roadMax - 0.01 || b < lay.roadMin + 0.01))
+    .filter(([a, b]) => b - a >= 1.2 && (a > lay.roadMax - 0.01 || b < lay.roadMin + 0.01))
     .map(([a, b]) => ({ u: (a + b) / 2, width: Math.min(1.6, b - a - 0.4), forward: a > 0, kind: 'cyclist', path: true }));
   // The approach roads run to the edges of the site (same extent as buildBridge).
   const extent = Math.max(L + 2 * c.approach + 36, ...approachSurfaces(c).flat().map(p => 2 * Math.abs(p[0]) + 8)),
@@ -289,11 +296,13 @@ export function startSketchy(app) {
     <div class="sk-banner" hidden></div>
     <div class="sk-warn" hidden><b></b><span class="sk-warn-bar"><i></i></span></div>
     <div class="sk-leap" title="Leapfrog (Space)"><i></i><span>Leap</span></div>
-    <p class="sk-help">WASD or arrows: hop · Space: leap (land on a roof to surf) · drag: look · wheel: zoom · C: camera · M: sound · Esc: pause</p>
+    <p class="sk-help sk-arcade">WASD or arrows: hop · Space: leap (land on a roof to surf) · drag: look · wheel: zoom · C: camera · M: sound · Esc: pause</p>
+    <p class="sk-help sk-roam-only">WASD: hop · hold Space: super jump · F: fly (Space up, Shift down, F to land) · drag: look · wheel: zoom · M: sound · Esc: pause</p>
     <div class="sk-pad" aria-hidden="true">
       <button type="button" data-dir="0,1">▲</button><button type="button" data-dir="-1,0">◀</button
       ><button type="button" data-dir="1,0">▶</button><button type="button" data-dir="0,-1">▼</button>
       <button type="button" class="sk-pad-leap" data-dir="leap">Leap</button>
+      <button type="button" class="sk-pad-fly" data-act="fly">Fly</button>
     </div>
     <div class="sk-menu" role="dialog" aria-modal="true" aria-labelledby="sk-title">
       <div class="sk-menu-card">
@@ -302,14 +311,14 @@ export function startSketchy(app) {
         <p class="sk-tag" data-k="tag">A secret BridgeSketch mini-game. Sketchy checks your bridge, the hard way.</p>
         <div class="sk-modes">
           <button type="button" data-mode="arcade"><b>Arcade</b><small>Squeeze between cars, leapfrog them, surf their roofs, catch flies. Don't camp: the heron is watching.</small></button
-          ><button type="button" data-mode="roam"><b>Free roam</b><small>Hop around the whole site and swim in the river (Space to swim fast).</small></button>
+          ><button type="button" data-mode="roam"><b>Free roam</b><small>Hop anywhere and swim in the river. Hold Space for a super jump, F to fly with a cape. Nothing stops Sketchy: he bonks every car.</small></button>
         </div>
         <button type="button" class="sk-resume" data-act="resume" hidden>Resume <kbd>Esc</kbd></button>
         <div class="sk-legend">
           <span><i class="dot fly"></i>Fly +100</span><span><i class="dot gold"></i>Golden fly +500</span
           ><span><i class="dot star"></i>Power fly: golden Sketchy, bonk the traffic</span><span><i class="dot slow"></i>Blue fly: slow motion</span>
         </div>
-        <div class="sk-keys"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> hop</span><span><kbd>Space</kbd> leap</span><span><kbd>C</kbd> camera</span><span><kbd>M</kbd> sound</span></div>
+        <div class="sk-keys"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> hop</span><span><kbd>Space</kbd> leap · hold: super jump</span><span><kbd>F</kbd> fly</span><span><kbd>C</kbd> camera</span><span><kbd>M</kbd> sound</span></div>
         <div class="sk-menu-foot"><span data-k="bestline"></span><button type="button" class="sk-quit" data-act="quit">Back to BridgeSketch</button></div>
       </div>
     </div>`;
@@ -356,6 +365,10 @@ export function startSketchy(app) {
     lastMiss: null,
     surf: 0,
     onFire: false,
+    charge: null,
+    flying: false,
+    flight: new T.Vector3(),
+    bumpAt: -10,
   };
   const frog = {
     s: deck.L / 2,
@@ -368,7 +381,7 @@ export function startSketchy(app) {
     ride: null,
   };
   const cam = { across: true, yaw: 0, pitch: 0.68, dist: 6.8, pos: new T.Vector3(), look: new T.Vector3(), snap: true };
-  const input = { held: [], queued: null, leap: false, space: false };
+  const input = { held: [], queued: null, leap: false, space: false, shift: false };
 
   const toWorld = (s, u) => {
     const f = frame(c, s, u);
@@ -507,9 +520,12 @@ export function startSketchy(app) {
   const zoneA = deck.edgeA - 35,
     zoneB = deck.edgeB + 35;
   let seed = c.seed * 31 + 7;
+  // 0.6.6: in one direction, each lane to the left (towards the centre line) runs about 15 % faster than the next.
+  const rankFromRight = lane =>
+    deck.lanes.filter(o => o.kind !== 'cyclist' && o.forward === lane.forward && (lane.forward ? o.u > lane.u + 0.01 : o.u < lane.u - 0.01)).length;
   const lanes = [...deck.lanes, ...deck.paths].map((lane, i) => {
     const cyclist = lane.kind === 'cyclist',
-      base = cyclist ? rand(4, 6.5) : rand(9, 14) + (lane.forward ? 0 : 0.6),
+      base = cyclist ? rand(4, 6.5) : rand(9, 11.5) * (1 + 0.15 * rankFromRight(lane)) + (lane.forward ? 0 : 0.6),
       L = { ...lane, base, speed: base, target: base, changeAt: rand(5, 11), vehicles: [], lift: lane.path ? CURB_HEIGHT : 0 };
     const headway = () => (Math.random() < 0.28 ? rand(3.6, 6) : rand(1.3, 3.4)) * Math.max(0.7, 1 - 0.06 * (g.level - 1));
     L.gap = () => Math.max(cyclist ? 3 : 6, headway() * L.speed);
@@ -544,6 +560,9 @@ export function startSketchy(app) {
     return L;
   });
   const roadLanes = lanes.filter(l => !l.path);
+  // Within reach of the traffic of a lane (its widest vehicle, its wander and the frog).
+  const laneReach = roadLanes.map(l => Math.max(...l.vehicles.map(v => v.hw)) + 0.15 + FROG_R);
+  const inTraffic = u => roadLanes.some((l, i) => Math.abs(u - l.u) < laneReach[i]);
   // Back in the queue behind its last vehicle, and always out of sight beyond the edge of the site: placing it just
   // behind a last vehicle already on the bridge made it pop up in front of Sketchy. Vehicles flying after a bonk are
   // out of the queue.
@@ -813,8 +832,11 @@ export function startSketchy(app) {
     $('best').textContent = Math.floor(best).toLocaleString('en-US');
     $('flies').textContent = g.flies;
     ui.querySelector('.sk-mult').classList.toggle('fire', g.mult >= 4);
-    leapMeter.style.setProperty('--k', String(1 - clamp(g.leapReady / BIG.cooldown, 0, 1)));
-    leapMeter.classList.toggle('ready', g.leapReady <= 0);
+    const charging = g.charge !== null;
+    leapMeter.style.setProperty('--k', String(charging ? Math.min(1, g.charge / CHARGE_TIME) : g.flying ? 1 : 1 - clamp(g.leapReady / BIG.cooldown, 0, 1)));
+    leapMeter.classList.toggle('ready', !charging && g.leapReady <= 0);
+    leapMeter.classList.toggle('charging', charging);
+    leapMeter.querySelector('span').textContent = charging ? (g.charge >= CHARGE_TIME ? 'Max!' : 'Jump') : g.flying ? 'Fly' : 'Leap';
     for (const [key, left] of [['star', g.power], ['slow', g.slow], ['surf', frog.ride ? g.surf : 0]]) {
       powerChips[key].hidden = left <= 0;
       if (left > 0) powerChips[key].querySelector('b').textContent = key === 'surf' ? `${left.toFixed(1)} s` : left.toFixed(1);
@@ -887,7 +909,7 @@ export function startSketchy(app) {
     };
   }
   function startHop(dirKey, big = false) {
-    if (g.state !== 'play' || frog.hop || g.paused) return false;
+    if (g.state !== 'play' || frog.hop || g.paused || g.flying || g.charge !== null) return false;
     const dashing = g.mode === 'roam' && frog.swim && big;
     if (big && !dashing && g.leapReady > 0) big = false;
     const yaw = cam.yaw,
@@ -902,6 +924,9 @@ export function startSketchy(app) {
     }
     hop.t = 0;
     hop.fromRoof = !!frog.ride;
+    // 0.6.6: leaving a roof, Sketchy lands right beside (or behind) the vehicle he rode: a few blinking frames of
+    // shield until it has gone by, instead of an instant pancake.
+    if (frog.ride) roofExitShield(frog.ride);
     frog.ride = null;
     frog.hop = hop;
     frog.targetYaw = Math.atan2(hop.to.x - hop.from.x, hop.to.z - hop.from.z);
@@ -941,13 +966,134 @@ export function startSketchy(app) {
         ripple(new T.Vector3(hop.to.x, hop.to.y + 0.17, hop.to.z), 2.2);
         popup(pick(['Splash!', 'Swim time!']));
       } else if (frog.swim) ripple(new T.Vector3(hop.to.x, hop.to.y + 0.17, hop.to.z), hop.dash ? 1.8 : 1.4);
-      if (hop.drop > 3) popup('Wheee!');
+      if (hop.super > 0.6 && !frog.swim) popup('Superfrog landing!', 'big');
+      else if (hop.drop > 3) popup('Wheee!');
     }
     // A puff of dust where the frog lands (bigger after a leap).
     if (!frog.swim) ripple(new T.Vector3(hop.to.x, hop.to.y + 0.04, hop.to.z), hop.big ? 1.6 : 0.7, '#d8d2c4', 0.45);
     if (hop.big) g.shake = Math.max(g.shake, 0.12);
     sketchyPose.landed = true;
     sketchyPose.big = hop.big;
+  }
+
+  function roofExitShield({ v, lane }) {
+    g.shield = Math.max(g.shield, clamp((2 * v.hl + 2) / Math.max(4, lane.speed), 1, 3));
+  }
+
+  // ---- Free roam super jump: hold Space to charge, release to jump (up to 19 m) ---------------------------------------
+  function superJump(k, dirKey) {
+    const yaw = cam.yaw,
+      fwd = new T.Vector3(Math.sin(yaw), 0, Math.cos(yaw)),
+      right = new T.Vector3(-Math.cos(yaw), 0, Math.sin(yaw)),
+      dir = dirKey ? fwd.multiplyScalar(dirKey[1]).addScaledVector(right, dirKey[0]).normalize() : new T.Vector3(Math.sin(frog.yaw), 0, Math.cos(frog.yaw)),
+      height = 2.5 + (SUPER.height - 2.5) * k,
+      apex = frog.pos.y + height;
+    let at = null,
+      reach = dirKey ? 1.5 + SUPER.reach * k : 1 + 1.5 * k;
+    // The furthest landing spot that exists (shorter when the far one is off the site or a wall).
+    for (const f of [1, 0.6, 0.3, 0]) {
+      const x = frog.pos.x + dir.x * reach * f,
+        z = frog.pos.z + dir.z * reach * f,
+        land = groundAt(x, z, apex);
+      if (land && !land.wall) {
+        at = { ...land, x, z };
+        reach *= f;
+        break;
+      }
+    }
+    if (!at) return false;
+    const y = at.water ? at.y - 0.17 : at.y,
+      up = Math.max(0.5, apex - Math.max(frog.pos.y, y)),
+      time = Math.sqrt((2 * (apex - frog.pos.y)) / SUPER.gravity) + Math.sqrt((2 * Math.max(0.1, apex - y)) / SUPER.gravity);
+    frog.hop = {
+      from: frog.pos.clone(),
+      to: new T.Vector3(at.x, y, at.z),
+      time,
+      height: up,
+      big: true,
+      flip: k > 0.35,
+      swim: at.water,
+      drop: frog.pos.y - y,
+      super: k,
+      t: 0,
+      fromRoof: false,
+    };
+    frog.targetYaw = reach > 0.5 ? Math.atan2(dir.x, dir.z) : frog.yaw;
+    g.still = 0;
+    g.lastHopAt = g.time;
+    g.shake = Math.max(g.shake, 0.1 + 0.25 * k);
+    sound.leap();
+    if (k > 0.5) sound.chime(3);
+    popup(k > 0.8 ? 'SUPER JUMP!' : k > 0.4 ? 'Big jump!' : 'Hop!', k > 0.8 ? 'big' : '');
+    sketchyPose.takeoff = true;
+    sketchyPose.big = true;
+    return true;
+  }
+
+  // ---- Free roam flight (F): a cape, WASD to fly, Space up, Shift down; F again to land ------------------------------
+  function setFlying(on) {
+    if (g.mode !== 'roam' || g.state !== 'play' || on === g.flying) return;
+    g.flying = on;
+    sketchy.setCape(on);
+    g.charge = null;
+    if (on) {
+      frog.hop = null;
+      frog.ride = null;
+      frog.swim = false;
+      g.flight.set(0, 4, 0);
+      sound.leap();
+      showBanner('<b>Up, up and away!</b><small>WASD fly · Space up · Shift down · F to land</small>', 'ready', 1800);
+      return;
+    }
+    // Landing: a fall to the surface below.
+    const land = groundAt(frog.pos.x, frog.pos.z, frog.pos.y) ?? { y: frog.ground, water: false };
+    const y = land.wall ? frog.ground : land.water ? land.y - 0.17 : land.y,
+      drop = Math.max(0, frog.pos.y - y);
+    frog.hop = {
+      from: frog.pos.clone(),
+      to: new T.Vector3(frog.pos.x, y, frog.pos.z),
+      time: Math.max(0.25, Math.sqrt((2 * drop) / SUPER.gravity)),
+      height: 0.2,
+      big: drop > 2,
+      flip: false,
+      swim: !!land.water,
+      drop,
+      t: 0,
+      fromRoof: false,
+    };
+    popup(drop > 6 ? 'Geronimo!' : 'Touchdown!');
+  }
+  function flyStep(dt) {
+    const yaw = cam.yaw,
+      fwd = new T.Vector3(Math.sin(yaw), 0, Math.cos(yaw)),
+      right = new T.Vector3(-Math.cos(yaw), 0, Math.sin(yaw)),
+      want = new T.Vector3();
+    for (const code of input.held) {
+      const [x, z] = KEYS[code];
+      want.addScaledVector(fwd, z).addScaledVector(right, x);
+    }
+    if (want.lengthSq() > 0) want.normalize().multiplyScalar(FLIGHT.speed);
+    want.y = (input.space ? FLIGHT.climb : 0) - (input.shift ? FLIGHT.climb : 0) + 0.35 * Math.sin(g.time * 2.2);
+    g.flight.lerp(want, 1 - Math.exp(-3.5 * dt));
+    const next = frog.pos.clone().addScaledVector(g.flight, dt),
+      { bounds } = (ground ??= groundIndex());
+    next.x = clamp(next.x, bounds.min.x, bounds.max.x);
+    next.z = clamp(next.z, bounds.min.z, bounds.max.z);
+    // Never through the ground, the deck or a pier: the surface below is the floor (water: just above it).
+    const below = groundAt(next.x, next.z, next.y + 0.4);
+    const floor = below && !below.wall ? below.y + (below.water ? 0.4 : 0.25) : frog.ground;
+    if (below?.wall) {
+      next.x = frog.pos.x;
+      next.z = frog.pos.z;
+    }
+    next.y = clamp(next.y, floor, FLIGHT.ceiling);
+    if (next.y <= floor + 1e-3 && g.flight.y < 0) g.flight.y = 0;
+    frog.ground = floor - (below?.water ? 0.4 : 0.25);
+    frog.pos.copy(next);
+    const flat = Math.hypot(g.flight.x, g.flight.z);
+    if (flat > 0.8) frog.targetYaw = Math.atan2(g.flight.x, g.flight.z);
+    if (Math.random() < dt * 10) sparkle(frog.pos.clone().add(new T.Vector3(0, 0.3, 0)), pick(['#ff5a6e', '#ffd36b', '#ffffff']), 1, 0.6);
+    return flat;
   }
 
   // ---- Car surfing: a leap that comes down on a roof rides the vehicle -------------------------------------------------
@@ -996,6 +1142,7 @@ export function startSketchy(app) {
       const toward = Math.sign(deck.lay.medianCentre - v.u) || 1,
         f2 = frame(c, s),
         keyDir = new T.Vector3(f2.nx * toward, 0, f2.nz * toward);
+      roofExitShield(frog.ride);
       frog.ride = null;
       const hop = planDeckHop(keyDir, false) ?? planDeckHop(keyDir.negate(), false);
       if (hop && g.mode === 'arcade') {
@@ -1027,6 +1174,7 @@ export function startSketchy(app) {
     sound.splat();
     g.shake = 0.45;
     const lost = Math.floor(g.score);
+    g.charge = null;
     if (g.mode === 'arcade' && lost > best) {
       best = lost;
       store(BEST_KEY, String(best));
@@ -1077,8 +1225,8 @@ export function startSketchy(app) {
             ds = fd.s - v.s,
             over = fd.h > v.height * 0.92 + lane.lift,
             touching = Math.abs(ds) < v.hl + FROG_R && du < v.hw + FROG_R && !over && fd.h > -0.6;
-          if (touching && g.power > 0) {
-            // Golden Sketchy bonks the vehicle off the bridge.
+          if (touching && (g.power > 0 || g.mode === 'roam')) {
+            // Golden Sketchy (and Sketchy in free roam, 0.6.6) bonks the vehicle off the bridge.
             launch(lane, v);
             sound.bonk();
             g.shake = Math.max(g.shake, 0.25);
@@ -1103,23 +1251,74 @@ export function startSketchy(app) {
           }
           v.side = side;
         }
-    if (g.shield > 0) return;
-    // Free roam: the crossing roads and railways under the bridge are dangerous too.
+    // 0.6.6: free roam: Sketchy is unstoppable on the roads and railways under the bridge too. Cars and cyclists
+    // are bonked into the sky; a train is too heavy, Sketchy bounces off it.
     if (g.mode === 'roam')
       for (const v of model.vehicles) {
         const r = v.userData.route;
-        if (!r?.road || !v.visible) continue;
+        if (!r?.road || !v.visible || v.userData.bonked) continue;
         const dx = frog.pos.x - v.position.x,
           dz = frog.pos.z - v.position.z,
           yaw = v.rotation.y,
           lx = dx * Math.cos(yaw) - dz * Math.sin(yaw),
           lz = dx * Math.sin(yaw) + dz * Math.cos(yaw);
         if (Math.abs(lx) < r.halfLength + FROG_R && Math.abs(lz) < r.halfWidth + FROG_R && Math.abs(frog.pos.y - v.position.y) < 2.5) {
-          if (g.power > 0) continue;
-          hitBy(r.type === 'train' ? 'Flattened by a train. Look both ways!' : 'Flattened on the road below.');
-          return;
+          if (r.type === 'train') bounceOff(v);
+          else bonkRoadVehicle(v);
         }
       }
+  }
+  // Vehicles of the scene (crossing roads) bonked in free roam: they fly a few seconds, then drive on.
+  const bonkedRoad = new Set();
+  function bonkRoadVehicle(v) {
+    const away = new T.Vector3().subVectors(v.position, frog.pos).setY(0).normalize();
+    v.userData.bonked = {
+      t: 0,
+      vel: new T.Vector3(away.x * 8, rand(14, 19), away.z * 8),
+      spin: new T.Vector3(rand(-5, 5), rand(-3, 3), rand(-6, 6)),
+    };
+    bonkedRoad.add(v);
+    sound.bonk();
+    g.shake = Math.max(g.shake, 0.25);
+    sparkle(v.position.clone().add(new T.Vector3(0, 1, 0)), '#ffe066', 10, 4);
+    popup(pick(['BONK!', 'Boink!', 'Kapow!']), 'gold');
+  }
+  function moveBonkedRoad(dt) {
+    for (const v of bonkedRoad) {
+      const f = v.userData.bonked;
+      f.t += dt;
+      f.vel.y -= 7 * dt;
+      v.position.addScaledVector(f.vel, dt);
+      v.rotation.x += f.spin.x * dt;
+      v.rotation.y += f.spin.y * dt;
+      v.rotation.z += f.spin.z * dt;
+      if (f.t > 4) restoreRoadVehicle(v);
+    }
+  }
+  function restoreRoadVehicle(v) {
+    delete v.userData.bonked;
+    bonkedRoad.delete(v);
+    positionVehicle(v, c);
+  }
+  function bounceOff(v) {
+    if (g.time - g.bumpAt < 0.6 || frog.hop?.bounce) return;
+    g.bumpAt = g.time;
+    const away = new T.Vector3().subVectors(frog.pos, v.position).setY(0);
+    if (away.lengthSq() < 1e-6) away.set(1, 0, 0);
+    away.normalize();
+    sound.honk();
+    g.shake = Math.max(g.shake, 0.3);
+    popup('Boing!');
+    if (g.flying) {
+      g.flight.addScaledVector(away, 9).setY(6);
+      return;
+    }
+    const x = frog.pos.x + away.x * 4,
+      z = frog.pos.z + away.z * 4,
+      land = groundAt(x, z, frog.pos.y + 2.5);
+    if (!land || land.wall) return;
+    const y = land.water ? land.y - 0.17 : land.y;
+    frog.hop = { from: frog.pos.clone(), to: new T.Vector3(x, y, z), time: 0.6, height: 2.2, big: true, flip: true, swim: land.water, drop: frog.pos.y - y, t: 0, bounce: true };
   }
 
   // ---- Camera ---------------------------------------------------------------------------------------------------------
@@ -1195,8 +1394,15 @@ export function startSketchy(app) {
       input.space = true;
       if (!e.repeat) {
         const held = input.held.at(-1);
-        if (!startHop(held ? KEYS[held] : null, true)) input.leap = true;
+        // 0.6.6: free roam on foot: hold Space to charge a super jump, release to jump (a tap is a normal leap).
+        if (g.mode === 'roam' && !frog.swim && !g.flying && !frog.hop && g.state === 'play') g.charge = 0;
+        else if (!g.flying && !startHop(held ? KEYS[held] : null, true)) input.leap = true;
       }
+    } else if (e.code === 'KeyF' && g.mode === 'roam') {
+      if (!e.repeat) setFlying(!g.flying);
+    } else if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+      input.shift = true;
+      used = g.flying;
     } else if (e.code === 'KeyC') toggleCamera();
     else if (e.code === 'KeyM') {
       sound.toggle();
@@ -1209,7 +1415,20 @@ export function startSketchy(app) {
   }
   function onKeyUp(e) {
     if (KEYS[e.code]) input.held = input.held.filter(k => k !== e.code);
-    if (e.code === 'Space') input.space = false;
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') input.shift = false;
+    if (e.code === 'Space') {
+      input.space = false;
+      if (g.charge !== null) releaseCharge();
+    }
+  }
+  function releaseCharge() {
+    const held = input.held.at(-1),
+      dir = held ? KEYS[held] : null,
+      time = g.charge;
+    g.charge = null;
+    if (g.paused || g.state !== 'play') return;
+    if (time < 0.18) startHop(dir, true);
+    else if (!superJump(Math.min(1, time / CHARGE_TIME), dir)) sketchy.animate(0, { landed: true });
   }
   function toggleCamera() {
     if (g.mode === 'roam') {
@@ -1267,7 +1486,11 @@ export function startSketchy(app) {
     else if (act === 'sound') {
       sound.toggle();
       showSound();
-    } else if (dir === 'leap') startHop(null, true);
+    } else if (act === 'fly') setFlying(!g.flying);
+    else if (dir === 'leap') {
+      if (g.mode === 'roam' && !frog.swim && !g.flying && !frog.hop) superJump(1, null);
+      else startHop(null, true);
+    }
     else if (dir) startHop(dir.split(',').map(Number));
     b.blur();
   }
@@ -1317,6 +1540,9 @@ export function startSketchy(app) {
       lastMiss: null,
     });
     for (const f of [...flies]) removeFly(f);
+    g.flying = false;
+    g.charge = null;
+    sketchy.setCape(false);
     frog.swim = false;
     frog.hop = null;
     frog.ride = null;
@@ -1354,6 +1580,8 @@ export function startSketchy(app) {
     if (!g.paused) {
       g.time += dt;
       moveTraffic(dt * (g.slow > 0 ? SLOW : 1));
+      moveBonkedRoad(dt);
+      if (g.charge !== null) g.charge += realDt;
       if (g.countdown > 0) {
         const before = Math.ceil(g.countdown / 0.8);
         g.countdown -= dt;
@@ -1378,8 +1606,10 @@ export function startSketchy(app) {
       }
       sketchy.setGolden(g.power > 0 ? Math.min(1, g.power * 3) : 0);
       if (g.started) sound.music(g.level, g.power > 0, g.slow > 0);
-      // Hop in progress, or riding on a roof.
-      if (frog.hop) {
+      // Flying (free roam), a hop in progress, or riding on a roof.
+      sketchyPose.fly = undefined;
+      if (g.flying) sketchyPose.fly = flyStep(dt);
+      else if (frog.hop) {
         const h = frog.hop;
         h.t += dt / h.time;
         const p = Math.min(1, h.t);
@@ -1396,7 +1626,7 @@ export function startSketchy(app) {
         else ride(dt);
       }
       // Next hop: a key pressed during the jump, or keys still held; Space held swims fast in free roam.
-      if (!frog.hop && g.state === 'play') {
+      if (!frog.hop && !g.flying && g.charge === null && g.state === 'play') {
         if (input.leap || (input.space && frog.swim && g.mode === 'roam')) {
           input.leap = false;
           const held = input.held.at(-1);
@@ -1421,8 +1651,11 @@ export function startSketchy(app) {
       }
       if (g.state === 'play' && g.countdown <= 0) {
         if (g.mode === 'arcade') {
+          // 0.6.6: a lane line between two traffic lanes is no hiding place: out of reach of the vehicles, Sketchy
+          // is on a refuge (with a little more time than on a sidewalk), even while hopping along it.
           const zone = deck.zone(frog.u),
-            onRoad = zone === 'lane' || !!frog.ride;
+            onLine = zone === 'lane' && !frog.ride && !inTraffic(frog.u),
+            onRoad = (zone === 'lane' && !onLine) || !!frog.ride;
           g.alive += dt;
           const level = 1 + Math.floor(g.alive / 30);
           if (level > g.level) {
@@ -1437,15 +1670,16 @@ export function startSketchy(app) {
           }
           // The heron: camping on a refuge, a shoulder or one spot is not allowed (golden Sketchy is too shiny).
           const calm = g.shield > 0 || g.power > 0 || frog.ride;
-          if (!calm && !frog.hop) {
-            g.still += dt;
-            g.refuge = onRoad ? 0 : g.refuge + dt;
+          if (!calm) {
+            if (!frog.hop) g.still += dt;
+            g.refuge = onRoad ? 0 : g.refuge + dt * (onLine ? REFUGE_LIMIT / LINE_LIMIT : 1);
           }
-          if (frog.hop || frog.ride) g.refuge = onRoad ? 0 : g.refuge;
+          if (frog.ride) g.refuge = 0;
           const danger = calm ? 0 : Math.max(g.still / STILL_LIMIT, g.refuge / REFUGE_LIMIT);
           warn.hidden = danger < 0.4;
           if (!warn.hidden) {
-            warn.querySelector('b').textContent = g.refuge / REFUGE_LIMIT >= g.still / STILL_LIMIT ? 'Too safe! Back on the road' : 'Keep hopping!';
+            warn.querySelector('b').textContent =
+              g.refuge / REFUGE_LIMIT >= g.still / STILL_LIMIT ? (onLine ? 'No camping on the lane line!' : 'Too safe! Back on the road') : 'Keep hopping!';
             warn.querySelector('i').style.width = `${Math.min(100, danger * 100)}%`;
             g.warnBeep -= dt;
             if (g.warnBeep <= 0) {
@@ -1498,7 +1732,8 @@ export function startSketchy(app) {
     if (frog.swim && !frog.hop) sketchy.group.position.y += 0.025 * Math.sin(g.time * 3);
     sketchy.group.rotation.y = frog.yaw;
     sketchy.group.visible = !(g.shield > 0 && g.state === 'play' && Math.floor(g.time * 12) % 2);
-    sketchyPose.air = frog.hop ? Math.min(1, frog.hop.t) : null;
+    sketchyPose.air = frog.hop && !g.flying ? Math.min(1, frog.hop.t) : null;
+    sketchyPose.charge = g.charge !== null ? Math.min(1, g.charge / CHARGE_TIME) : 0;
     sketchyPose.flip = frog.hop?.flip;
     sketchyPose.swim = frog.swim;
     sketchyPose.flat = g.state === 'flat' ? 1 : 0;
@@ -1530,6 +1765,7 @@ export function startSketchy(app) {
       u: frog.u,
       swim: frog.swim,
       riding: !!frog.ride,
+      hopping: !!frog.hop,
       pos: frog.pos.toArray(),
       lanes: lanes.length,
       vehicles: lanes.reduce((n, l) => n + l.vehicles.length, 0),
@@ -1548,6 +1784,8 @@ export function startSketchy(app) {
     }),
     begin,
     hop: (dir, big) => startHop(dir, big),
+    superJump: (k = 1, dir = null) => superJump(k, dir),
+    fly: on => setFlying(on),
     power: (kind = 'star') => {
       if (kind === 'star') g.power = POWER_TIME;
       else g.slow = SLOW_TIME;
@@ -1566,6 +1804,7 @@ export function startSketchy(app) {
       scene.remove(world);
       if (deckTraffic) deckTraffic.visible = trafficWasVisible;
       sketchy.dispose();
+      for (const v of [...bonkedRoad]) restoreRoadVehicle(v);
       for (const r of ripples) r.m.material.dispose();
       for (const p of sparks) p.sp.material.dispose();
       for (const m of Object.values(mats)) for (const x of Object.values(m)) x?.dispose();

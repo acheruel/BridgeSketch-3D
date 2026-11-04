@@ -787,6 +787,59 @@ canvas {
   margin: 0;
 }
 
+/* 0.6.6 · IFC export dialog. */
+#ifc-dialog {
+  width: min(600px, calc(100vw - 32px));
+  max-width: none;
+}
+#ifc-dialog h2 {
+  margin-top: 0;
+}
+.ifc-schemas {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 4px;
+  padding: 0;
+  border: 0;
+}
+.ifc-schemas legend {
+  margin-bottom: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ifc-choice {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ifc-choice:has(input:checked) {
+  border-color: var(--teal);
+  background: var(--mint-soft);
+}
+.ifc-choice input {
+  margin: 2px 0 0;
+  accent-color: var(--teal);
+}
+.ifc-choice b {
+  display: block;
+  font-size: 0.86rem;
+}
+.ifc-choice small {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
 /* Road profile (0.6.2): chainage / elevation table and CSV export. 0.6.3: File menu dialog with X, Y. */
 #profile-dialog {
   width: min(680px, calc(100vw - 32px));
@@ -1416,6 +1469,12 @@ body.panel-collapsed .panel-toggle {
   top: 12px;
   right: 12px;
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.hud-row {
+  display: flex;
   align-items: flex-start;
   gap: 6px;
 }
@@ -1460,13 +1519,6 @@ body.panel-collapsed .panel-toggle {
   fill: var(--mint);
   stroke: none;
 }
-.dock-time {
-  padding-left: 8px;
-  border-left: 1px solid #ffffff2e;
-  color: #9cdfcf;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
 .dock-button .caret {
   font-size: 0.7rem;
   opacity: 0.7;
@@ -1480,19 +1532,16 @@ body.panel-collapsed .panel-toggle {
 .dock.open .dock-layers {
   fill: var(--teal-ink);
 }
-.dock.open .dock-time {
-  color: var(--teal-ink);
-  border-color: #103b4133;
-}
 .dock.open .caret {
   transform: rotate(180deg);
 }
 .dock-panel {
   position: absolute;
-  top: 44px;
+  z-index: 2;
+  top: 84px;
   right: 0;
   width: 300px;
-  max-height: min(600px, calc(100dvh - var(--topbar-h) - 70px));
+  max-height: min(600px, calc(100dvh - var(--topbar-h) - 110px));
   overflow: auto;
   scrollbar-width: thin;
   padding: 10px 12px 8px;
@@ -1580,37 +1629,99 @@ body.panel-collapsed .panel-toggle {
 .dock-scene .dock-h {
   margin-top: 10px;
 }
-.time-control {
+/* 0.6.6 · Time of day: its own bar under the view menu, always visible (dark glass like the buttons). */
+.time-bar {
+  width: 300px;
+  height: 36px;
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
+  grid-template-columns: 28px 16px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  padding: 0 2px;
+  padding: 0 10px 0 4px;
+  border: 1px solid #ffffff2e;
+  border-radius: 9px;
+  background: #0f2a3dcc;
+  color: #e3f1f4;
+  backdrop-filter: blur(10px) saturate(1.2);
+  box-shadow: 0 4px 14px #04101d40;
+}
+.time-bar .time-sun {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: #ffd36b;
+  stroke-width: 1.8;
+  stroke-linecap: round;
 }
 .time-control input {
   width: 100%;
   margin: 0;
-  accent-color: var(--teal);
+  accent-color: #7fd8c3;
 }
 .time-control output {
   min-width: 3.2em;
   text-align: right;
+  font-size: 0.8rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: var(--teal-ink);
+  color: #9cdfcf;
 }
 .time-play {
-  width: 30px;
+  width: 28px;
   height: 28px;
   padding: 0;
+  border: 1px solid #ffffff2e;
   border-radius: 7px;
-  background: #f6f9fb;
+  background: #ffffff14;
+  color: #e3f1f4;
   font-size: 0.72rem;
 }
+.time-play:hover {
+  background: #ffffff26;
+}
 .time-play[aria-pressed='true'] {
+  background: #bcebdd;
+  border-color: #bcebdd;
+  color: #103b41;
+}
+/* 0.6.6 · Weather and effects in the view menu. */
+.dock-weather {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.dock-weather button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f6f9fb;
+  color: var(--ink);
+  font-size: 0.72rem;
+}
+.dock-weather svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.dock-weather button:hover:not(:disabled) {
+  background: #eef5f7;
+  color: var(--teal);
+}
+.dock-weather [aria-pressed='true'],
+.dock-weather [aria-pressed='true']:hover:not(:disabled) {
   background: var(--mint-soft);
   border-color: var(--teal);
   color: var(--teal-ink);
+  box-shadow: inset 0 0 0 1px var(--teal);
 }
 .view-options {
   display: flex;
@@ -1674,7 +1785,8 @@ body.panel-collapsed .panel-toggle {
   outline: 3px solid var(--ring);
   outline-offset: 2px;
 }
-.section-view .dock-scene {
+.section-view .dock-scene,
+.section-view .time-bar {
   display: none;
 }
 .section-view .dock-modes {
@@ -1782,7 +1894,8 @@ body.focus-mode .dock-panel {
     top: 8px;
     right: 8px;
   }
-  .dock-panel {
+  .dock-panel,
+  .time-bar {
     width: min(300px, calc(100vw - 16px));
     max-height: calc(min(66svh, 128vw) - 56px);
   }
@@ -1801,7 +1914,7 @@ body.focus-mode .dock-panel {
 }
 @media (max-height: 500px) and (orientation: landscape) {
   .dock-panel {
-    max-height: calc(100svh - 120px);
+    max-height: calc(100svh - 150px);
   }
 }
 @media (pointer: coarse) {
@@ -1812,7 +1925,10 @@ body.focus-mode .dock-panel {
     width: 42px;
   }
   .dock-panel {
-    top: 50px;
+    top: 96px;
+  }
+  .time-bar {
+    height: 42px;
   }
   .dock-views button {
     padding: 9px 2px 8px;
@@ -1824,11 +1940,11 @@ body.focus-mode .dock-panel {
     padding: 9px 4px;
   }
   .time-control {
-    grid-template-columns: 38px minmax(0, 1fr) auto;
+    grid-template-columns: 34px 16px minmax(0, 1fr) auto;
   }
   .time-play {
-    width: 38px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
   }
 }
 
