@@ -322,13 +322,13 @@ export function buildBridge(c, m, { batch = true, site = true } = {}) {
         );
       }
     }
-    // Steel: cross-frames at no more than 8 m in each span. NEBT: cast-in-place intermediate diaphragms per
+    // Steel: cross-frames at no more than frameSpacing (8 m by default, 0.6.7) in each span. NEBT: cast-in-place intermediate diaphragms per
     // MTQ Table 8.2-4 — none up to 15 m, one up to 30 m, two up to 45 m (one per 15 m), equally spaced.
     // Supports get full diaphragms below.
     const frames =
       c.material === 'concrete'
         ? Math.max(1, Math.ceil((c.spans[i].length - 1e-6) / 15))
-        : Math.max(1, Math.ceil((b - a) / 8));
+        : Math.max(1, Math.ceil((b - a - 1e-6) / c.frameSpacing));
     for (let n = 1; n < frames && c.material !== 'slab' && c.material !== 'psbox' && !truss; n++) {
       const s = a + ((b - a) * n) / frames;
       for (let g = 0; g < c.girders - 1; g++) {
@@ -500,6 +500,20 @@ export function buildBridge(c, m, { batch = true, site = true } = {}) {
         u => seatAt(u),
       );
       abutment.name = 'Abutment seat';
+      // 0.6.7: spread footing under the abutment, 1.5 m thick, toe in front and heel behind (buried, kept for the
+      // exports and the reveal view).
+      const footing = profiledSupportWall(
+        structure,
+        m.concrete,
+        c,
+        s + (j === 0 ? -1 : 1) * 0.5,
+        -half + ABUTMENT_SIDE - 0.3,
+        half - ABUTMENT_SIDE + 0.3,
+        4,
+        () => earth - 1.5,
+        () => earth,
+      );
+      footing.name = 'Abutment footing';
       // Wing/return walls use the actual skewed support line and bridge tangent.
       const direction = j === 0 ? -1 : 1,
         liner = c.abutmentFinish === 'formliner';
@@ -836,7 +850,9 @@ export function buildBridge(c, m, { batch = true, site = true } = {}) {
           structure.add(column);
         }
         const footprint = c.columnShape === 'rectangular' ? c.columnThickness : c.columnDiameter;
-        box(structure, m.concrete, f.x, earth + 0.12, f.z, c.columnDiameter + 0.3, 0.45, footprint + 0.3, f.angle).name = 'Column footing';
+        // 0.6.7: no base plinth under the columns of box-girder bridges.
+        if (!['box', 'psbox'].includes(c.material))
+          box(structure, m.concrete, f.x, earth + 0.12, f.z, c.columnDiameter + 0.3, 0.45, footprint + 0.3, f.angle).name = 'Column footing';
       }
       if (c.pierType === 'portal' && c.portalBeam) {
         // Tie beam between the portal legs at mid-height.

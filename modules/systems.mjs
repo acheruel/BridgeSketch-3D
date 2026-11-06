@@ -382,6 +382,28 @@ export function addArch(c, m, structure, earth, ground = () => -1e3) {
   return { k, rise, spring };
 }
 
+// 0.6.7: I-beam between two points: centre axis p→q, web vertical, flanges horizontal (three plates, each named).
+function iBeam(parent, mat, p, q, depth, flange, name, tf = 0.018, tw = 0.01) {
+  const a = new T.Vector3(...p),
+    b = new T.Vector3(...q),
+    x = b.clone().sub(a),
+    L = x.length();
+  x.normalize();
+  const z = new T.Vector3().crossVectors(x, new T.Vector3(0, 1, 0)).normalize(),
+    yv = new T.Vector3().crossVectors(z, x),
+    g = new T.Group();
+  g.matrix.makeBasis(x, yv, z).setPosition(a.add(b).multiplyScalar(0.5));
+  g.matrix.decompose(g.position, g.quaternion, g.scale);
+  for (const [cy, h, w] of [
+    [depth / 2 - tf / 2, tf, flange],
+    [0, depth - 2 * tf, tw],
+    [-depth / 2 + tf / 2, tf, flange],
+  ])
+    box(g, mat, 0, cy, 0, L, h, w).name = name;
+  g.name = name;
+  parent.add(g);
+  return g;
+}
 // ─── Steel trusses for footbridges (0.6.6) ────────────────────────────────────────────────────────────────
 // Two trusses with the deck at their bottom chords: a pony truss (low, open top, outrigger knee braces) or a through
 // truss (top struts and X bracing over the path, portal struts at the ends). Warren, Pratt or Howe web; every
@@ -470,13 +492,7 @@ export function addTruss(c, m, structure) {
           if (!(interior || overPier) || (overPier && k === 0)) continue;
           if (interior && c.trussPattern === 'warren' && k % 2 === 0) continue;
           bar(B(k), Tn(k), member * 0.9, overPier ? 'Truss post over pier' : 'Truss post');
-          // Pony truss: outrigger knee brace outside each post (U-frame against lateral buckling of the top chord).
-          if (!through) {
-            const out = node(nodes[k], u + side * 0.7),
-              knee = node(nodes[k], u, H * 0.6);
-            bar(out, knee, 0.12, 'Pony truss knee brace');
-            bar(node(nodes[k], u + side * cw * 0.5), out, 0.16, 'Floor beam outrigger');
-          }
+          // 0.6.7: no knee braces on pony trusses (open top, plain posts).
         }
       });
     }
@@ -487,7 +503,8 @@ export function addTruss(c, m, structure) {
         y = u => slabUnder(x, u) - 0.2,
         a = node(x, -tu + cw / 2),
         b = node(x, tu - cw / 2);
-      add(beam(group, m.steel, [a[0], y(-tu), a[2]], [b[0], y(tu), b[2]], 0.2, 0.4), 'Floor beam');
+      // 0.6.7: rolled I-section (W410-like: 400 mm deep, 180 mm flanges) instead of a solid rectangle.
+      iBeam(group, m.steel, [a[0], y(-tu), a[2]], [b[0], y(tu), b[2]], 0.4, 0.18, 'Floor beam');
     }
     // Through truss: top struts at the top-chord nodes (every k panels for the chosen spacing), X bracing between
     // them, deeper portal struts over the end posts.

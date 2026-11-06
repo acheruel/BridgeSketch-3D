@@ -139,7 +139,8 @@ function notify(message, error = false) {
   $('feedback').replaceChildren(document.createTextNode(message));
   $('feedback').classList.toggle('error', error);
   $('feedback').hidden = false;
-  if (!error) messageTimer = setTimeout(() => ($('feedback').hidden = true), 5000);
+  // 0.6.7: errors also clear themselves (10 s), so a stale message never stays on screen.
+  messageTimer = setTimeout(() => ($('feedback').hidden = true), error ? 10000 : 5000);
 }
 // Undo / redo / dirty tracking / autosave (history.mjs). Snapshots exclude the clock (time of day, time flow).
 const hist = createHistory({
@@ -665,6 +666,15 @@ function applyTimeOfDay(hour, flowing = false) {
   $('timeLabel').textContent =
     String(Math.floor(minutes / 60)).padStart(2, '0') + ':' + String(minutes % 60).padStart(2, '0');
   needsRender = true;
+}
+// 0.6.7: uniform wheel zoom. Raw deltaY varies by mouse, driver and browser (lines vs pixels, 3 to 300 per notch,
+// accelerated bursts when the frame rate drops), so each event is converted to pixels and capped at one notch:
+// every mouse zooms 5 % per notch whatever the fps; touchpads keep their small, smooth deltas.
+const WHEEL_NOTCH = 100;
+function normalizedWheel(e) {
+  let dy = e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1);
+  if (e.ctrlKey) dy *= 4; // touchpad pinch: tiny deltas, keep it responsive
+  return { clientX: e.clientX, clientY: e.clientY, deltaY: Math.sign(dy) * Math.min(Math.abs(dy), WHEEL_NOTCH) };
 }
 // Section view zoom: wheel zooms about the pointer, drag pans, double-click resets (like the 3D views).
 const sectionZoom = { k: 1, cx: null, cy: null, width: 800 };
@@ -1573,6 +1583,7 @@ async function boot() {
   controls.panSpeed = 1.8;
   controls.maxDistance = 2500;
   controls.maxPolarAngle = Math.PI * 0.5;
+  controls._customWheelEvent = normalizedWheel;
   materials = makeMaterials(() => (needsRender = true));
   if (location.hash) {
     try {
@@ -1833,7 +1844,8 @@ async function startGame() {
     if (effectiveQuality(config.renderQuality) === 'high')
       await update({ ...config, renderQuality: 'balanced' }, { heavy: true, noHistory: true });
     if (view !== 'perspective') fit('perspective');
-    const { startSketchy } = await import('./sketchy/game.mjs');
+    // 0.6.7: a stale cache right after a deploy can fail the dynamic import; retry once past the cache.
+    const { startSketchy } = await import('./sketchy/game.mjs').catch(() => import(`./sketchy/game.mjs?v=${release.version}-${Date.now()}`));
     controls.enabled = false;
     perspectiveCamera.fov = 55;
     perspectiveCamera.far = 1600;
@@ -2266,7 +2278,14 @@ $('exportIfc').onclick = async () => {
       });
     download(new Blob([result.text], { type: 'application/x-step' }), `${fileBase()}-${schema.toLowerCase()}.ifc`);
     $('ifc-dialog').close();
-    notify(`IFC exported: ${result.elements} elements (${(result.text.length / 1e6).toFixed(1)} MB). Save JSON to keep editable parameters.`);
+    // 0.6.7: open a free online viewer (Online 3D Viewer, open source, web-ifc) next to the download; browsers do
+    // not let a page hand a local file to another site, so the user drops the downloaded file into that tab.
+    window.open('https://3dviewer.net/', '_blank', 'noopener');
+    notify(
+      `IFC exported: ${result.elements} elements (${(result.text.length / 1e6).toFixed(1)} MB). ` +
+        'Drop the downloaded .ifc file into the 3dviewer.net tab (opened for you) to view it.' +
+        ' Save JSON to keep editable parameters.',
+    );
   } catch (e) {
     notify(`IFC export failed: ${e.message}`, true);
   } finally {

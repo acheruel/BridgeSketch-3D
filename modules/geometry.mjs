@@ -19,6 +19,8 @@ export const defaults = {
   pierDepth: 2.4,
   taper: 30,
   steelColor: 'brown',
+  // 0.6.7: maximum spacing of the intermediate steel cross-frames in each span (m).
+  frameSpacing: 8,
   fasciaColor: 'same',
   barrierType: 'concrete',
   leftRailing: '201',
@@ -42,8 +44,9 @@ export const defaults = {
   trafficMode: 'vehicles',
   waterStyle: 'glossy',
   skyMode: 'clouds',
-  renderQuality: 'high',
-  fog: true,
+  // 0.6.7: Medium (balanced) by default for every example; the atmospheric haze option is gone.
+  renderQuality: 'balanced',
+  fog: false,
   weather: 'clear',
   bentWidth: 1.9,
   bentThickness: 1,
@@ -117,8 +120,8 @@ export const defaults = {
   girderScreens: true,
   // 0.6.6: abutment faces smooth, or with an architectural formliner (vertical ribs of varied widths, 40 mm).
   abutmentFinish: 'smooth',
-  // 0.6.4: physical atmosphere (Hillaire 2020) by default; 'stylised' and 'physical' (Preetham) remain.
-  skyModel: 'atmosphere',
+  // 0.6.7: stylised gradient sky by default (the atmosphere model left a grey band near the horizon).
+  skyModel: 'stylised',
   // 0.6.6: steel truss footbridge (structureSystem 'truss'): pony or through, Warren / Pratt / Howe web, panel
   // (post spacing), chord height between axes and the spacing of the floor beams and top struts.
   trussType: 'through',
@@ -376,7 +379,8 @@ export function validate(raw) {
   // Structural slab thickness under the asphalt: 200, 225 (default) or 250 mm.
   c.deck = Number(c.deck);
   if (![0.2, 0.225, 0.25].includes(c.deck)) throw Error('Slab thickness: select 200, 225 or 250 mm.');
-  if (typeof c.fog !== 'boolean') throw Error('Invalid atmospheric haze option.');
+  // 0.6.7: haze removed; old links and files may still carry fog: true.
+  c.fog = false;
   if (typeof c.timeFlow !== 'boolean') throw Error('Invalid time flow option.');
   if (!['clear', 'rain', 'snow', 'leaves'].includes(c.weather)) throw Error('Select the weather: clear, rain, snow or falling leaves.');
   if (
@@ -439,6 +443,7 @@ export function validate(raw) {
     grade: [-6, 6],
     approach: [5, 200],
     seed: [0, 99999],
+    frameSpacing: [2, 25],
   };
   Object.assign(limits, {
     laneWidth: [cycling ? 1.5 : 2.5, 4.5],
@@ -515,10 +520,7 @@ export function validate(raw) {
     ])
       if (typeof c[k] !== 'number' || !Number.isFinite(c[k]) || c[k] < lo || c[k] > hi)
         throw Error(`${label}: enter ${lo} to ${hi} m.`);
-    if (c.trussType === 'pony' && c.trussHeight > 2.6)
-      throw Error('Pony truss: keep the chords within 2.6 m (a taller truss needs top bracing: choose a through truss).');
-    if (c.trussType === 'through' && c.trussHeight < 3.8)
-      throw Error('Through truss: at least 3.8 m between chord axes, for 2.7 m of headroom under the top struts.');
+    // 0.6.7: pony and through trusses take any height in range; the designer decides on the bracing.
     if (c.width < 3 || c.width > 10) throw Error('Truss footbridge: deck width 3 to 10 m.');
     // Deck at the bottom chords: two steel trusses on four bearings per support, no girders, no sidewalks.
     Object.assign(c, {

@@ -423,7 +423,7 @@
                 <div id="truss-fields" class="field-grid">
                   <label
                     >Truss type<select name="trussType">
-                      <option value="pony">Pony · open top, knee braces</option>
+                      <option value="pony">Pony · open top</option>
                       <option value="through">Through · top struts and bracing</option>
                     </select></label
                   ><label
@@ -434,7 +434,7 @@
                     </select></label
                   ><label title="Spacing of the posts (panel length); rounded to an even number of panels in each span"
                     >Post spacing · m<input name="trussPanel" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="2" max="8" step="0.25" /></label
-                  ><label title="Between the chord axes. Pony: 1.2 to 2.6 m. Through: 3.8 to 6 m."
+                  ><label title="Between the chord axes, 1.2 to 6 m (through trusses need about 3.8 m for headroom under the top struts)."
                     >Truss height · m<input name="trussHeight" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="1.2" max="6" step="0.1" /></label
                   ><label title="Floor beams under the deck, and top struts of a through truss (at the nearest panel points)"
                     >Cross-beam spacing · m<input name="trussBraceSpacing" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="1.5" max="12" step="0.25" /></label>
@@ -553,8 +553,10 @@
               </div>
             </details>
             <details id="group-steel-finish" class="input-group" data-group="str-steel">
-              <summary><span class="group-title">Steel finish</span><span class="group-meta" data-meta="str-steel"></span></summary>
+              <summary><span class="group-title">Steel finish &amp; bracing</span><span class="group-meta" data-meta="str-steel"></span></summary>
               <div class="group-body">
+                <label id="frame-spacing-field" title="Intermediate cross-frames are equally spaced, at no more than this distance"
+                  >Cross-frame spacing · max m<input name="frameSpacing" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="2" max="25" step="0.5" /></label>
                 <div id="steel-color-controls">
                   <label
                     >Steel finish<select name="steelColor">
@@ -806,12 +808,6 @@
                     <option value="natural">Natural valley</option>
                     <option value="profile">Follows the road profile</option>
                   </select></label
-                ><label
-                  >Terrain cover<select name="terrainMode">
-                    <option value="grass">Summer meadow</option>
-                    <option value="fall">Autumn · fall colours</option>
-                    <option value="snow">Winter snow</option>
-                  </select></label
                 >
                 <div class="field-grid">
                   <label>Approach length · m<input name="approach" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="5" max="200" step="1" /></label
@@ -864,9 +860,9 @@
                     <option value="stylised">Stylised gradient</option>
                     <option value="physical">Preetham · analytic daylight</option>
                   </select></label
-                ><label class="check"><input name="fog" type="checkbox" />Atmospheric haze</label>
+                >
                 <p class="hint">
-                  Atmosphere computes Rayleigh, Mie and ozone scattering, with a real twilight. Haze is tinted by the hour; rain and snow always add fog.
+                  Atmosphere computes Rayleigh, Mie and ozone scattering, with a real twilight. Rain and snow add a light fog.
                   Weather and birds are in the view menu, top right.
                 </p>
               </div>
@@ -874,18 +870,9 @@
             <details class="input-group" data-group="site-render">
               <summary><span class="group-title">Rendering</span><span class="group-meta" data-meta="site-render"></span></summary>
               <div class="group-body">
-                <label
-                  >Render quality<select name="renderQuality">
-                    <option value="auto">Auto</option>
-                    <option value="performance">Performance</option>
-                    <option value="balanced">Balanced</option>
-                    <option value="high">High</option>
-                  </select></label
-                ><label class="check"><input name="bloom" type="checkbox" />Glow (bloom)</label>
+                <label class="check"><input name="bloom" type="checkbox" />Glow (bloom)</label>
                 <p class="hint">
-                  Auto picks from the GPU and lowers itself if the frame rate drops. Performance: no water reflection.
-                  Balanced: half-resolution reflection. High: dense meadow, sharp reflection. Glow applies to Balanced
-                  and High.
+                  Render quality and season are in the view menu (top right). Glow applies to Medium and High.
                 </p>
               </div>
             </details>
@@ -967,6 +954,22 @@
                     ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19c0-8 5-13 15-14-1 10-6 15-14 15"/><path d="M5 19 13 11"/></svg>Leaves</button>
                 </div>
                 <label class="dock-switch"><input name="birds" form="parameters" type="checkbox" role="switch" /><span class="sw" aria-hidden="true"></span><span>Birds<small>A flock of gulls by day</small></span></label>
+                <div class="dock-h">Quality &amp; season</div>
+                <div class="dock-selects">
+                  <label title="Auto picks from the GPU and lowers itself if the frame rate drops"
+                    >Quality<select name="renderQuality" form="parameters">
+                      <option value="auto">Auto</option>
+                      <option value="performance">Low · no reflection</option>
+                      <option value="balanced">Medium</option>
+                      <option value="high">High · dense meadow</option>
+                    </select></label
+                  ><label
+                    >Season<select name="terrainMode" form="parameters">
+                      <option value="grass">Spring · summer meadow</option>
+                      <option value="fall">Autumn · fall colours</option>
+                      <option value="snow">Winter · snow</option>
+                    </select></label>
+                </div>
                 <div class="dock-h">Display</div>
                 <div class="view-options">
                   <label class="dock-switch"><input id="reveal" type="checkbox" role="switch" /><span class="sw" aria-hidden="true"></span><span>Reveal structure<small>Hide the deck to see the girders</small></span></label
@@ -1074,6 +1077,14 @@
           Starfield and grass species adapted from CK42BB/procedural-stars-threejs and procedural-grass-threejs (MIT);
           atmosphere after Hillaire 2020 (sebh/UnrealEngineSkyAtmosphere, MIT) and Bruneton 2008 (BSD); Preetham sky
           after Tw1ddle/Sky-Shader and the three.js Sky object (MIT); river details after Noniv/web-ocean (MIT).
+        </p>
+        <h3>Version 0.6.7</h3>
+        <p>
+          Medium quality and a stylised gradient sky for every example, without the grey haze; quality and season in
+          the view menu; the same wheel zoom step on every mouse, whatever the frame rate; messages clear themselves
+          within 10 s; adjustable cross-frame spacing for steel girders; 1.5 m abutment footings; no column plinth
+          under box girders; trusses: any height, I-section floor beams, no knee braces on pony trusses; the IFC export
+          opens a free online viewer.
         </p>
         <h3>Version 0.6.6</h3>
         <p>

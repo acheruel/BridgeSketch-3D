@@ -2001,3 +2001,21 @@ body.sketchy-game #canvasHost {
   font-weight: 400;
   color: var(--muted);
 }
+/* 0.6.7: render quality and season moved from the parameters to the view dock. */
+.dock-selects {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+  padding: 0 2px;
+}
+.dock-selects label {
+  display: grid;
+  gap: 3px;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.dock-selects select {
+  width: 100%;
+  min-width: 0;
+  font-size: 0.8rem;
+}

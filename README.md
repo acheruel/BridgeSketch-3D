@@ -2,7 +2,7 @@
 
 **Try it online:** [BridgeSketch 3D on GitHub Pages](https://acheruel.github.io/BridgeSketch-3D/)
 
-**A quick visual tool for bridge concepts** · Version 0.6.6 · 4 November 2026 · Anthony Chéruel
+**A quick visual tool for bridge concepts** · Version 0.6.7 · 6 November 2026 · Anthony Chéruel
 
 BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a span arrangement, deck, supports and site, then inspect the result from above, below or along the obstacle being crossed. It runs in the browser from static files, with no account, backend or build step.
 
@@ -18,6 +18,15 @@ BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a
 - **Parameters:** collapsible sections and formulas in numeric fields, such as `=12*3`.
 - **History:** undo and redo with Ctrl+Z / Ctrl+Y.
 - **Files and export:** save and open JSON, share link, PNG snapshot, GLB export and IFC export (2x3, 4, 4.3).
+
+## What's new in 0.6.7
+
+- **Cleaner defaults:** every example opens in Medium quality with the stylised gradient sky; the atmospheric haze option is gone (no more grey band at the horizon). Quality and season (spring/summer, autumn, winter) moved to the view menu, top right.
+- **Steady wheel zoom:** the same 5 % step per notch on every mouse and browser, whatever the frame rate.
+- **Messages** clear themselves within 10 s.
+- **Steel girders:** adjustable cross-frame spacing (8 m by default). **Abutments** sit on 1.5 m footings; box-girder piers lose the small column plinth.
+- **Trusses:** any height from 1.2 to 6 m for pony and through trusses, I-section floor beams, no knee braces on pony trusses.
+- **IFC export** opens the free Online 3D Viewer (3dviewer.net) to drop the file in.
 
 ## What's new in 0.6.6
 
