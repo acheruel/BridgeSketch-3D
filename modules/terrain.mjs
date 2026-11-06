@@ -11,6 +11,17 @@ import { tuftGeometry, flowerGeometry, scatterMeadow, grassBudget, grassKinds } 
 import { addShrubs, addTrees } from './trees.mjs';
 import { effectiveQuality, renderSettings } from './quality.mjs';
 import { RAIL_BED } from './geometry.mjs';
+import { buildRoads, buildSkirt, buildTerrainGeometry, buildWater, demEarth, demFloor, demGround, demKey, demSite, roadDistance, scatterForest } from './dem.mjs';
+
+// 0.6.8: imported terrain (DTM/DSM from QuickerAtlas) as a session overlay. Set by buildBridge from its `dem` option; while
+// set, terrainSampler returns the DTM with the bridge corridor carved out, and addEnvironment builds the imported site.
+let activeDem = null;
+export const setActiveDem = dem => {
+  activeDem = dem ?? null;
+};
+export const getActiveDem = () => activeDem;
+// Footing bottom under a support on the imported ground (null on the procedural terrain).
+export const supportEarth = (c, station, abutment) => (activeDem ? demEarth(c, activeDem, station, abutment) : null);
 
 export function crossing(c, s, angle, width, elevation, type) {
   const f = frame(c, s),
@@ -123,6 +134,7 @@ export function roadBed(width, d) {
 }
 
 export function terrainSampler(c) {
+  if (activeDem) return demGround(c, activeDem);
   const ss = stations(c),
     obstacles = c.spans.flatMap((s, i) =>
       s.obstacle === 'water' ? [] : [crossing(c, (ss[i] + ss[i + 1]) / 2, s.angle, s.width, s.elevation, s.obstacle)],
@@ -255,7 +267,9 @@ export function frontSlopeFit(c, end) {
   const seat =
     Math.min(...[-half, 0, half].map(u => soffitAt(c, k, supportStation(c, end, u) + side, u))) - 0.225 - (c.frontSlopeDrop ?? 0);
   const room =
-    span.obstacle === 'water'
+    activeDem
+      ? span.length * 0.45
+      : span.obstacle === 'water'
       ? span.length * 0.4
       : Math.max(1.4, (span.length - span.width / Math.sin((span.angle * Math.PI) / 180)) / 2 - 1);
   const height = d => {
@@ -292,7 +306,7 @@ export function approachSurfaces(c, extent = 0) {
   };
   const toe = (p, dx, dz) => {
     let lo = 0,
-      hi = Math.max(1, 2 * (p[1] - Math.min(-6, ...c.spans.map(s => s.elevation - 1))) + 4);
+      hi = Math.max(1, 2 * (p[1] - Math.min(-6, ...c.spans.map(s => s.elevation - 1), activeDem ? demFloor(activeDem) - 1 : Infinity)) + 4);
     for (let i = 0; i < 28; i++) {
       const r = (lo + hi) / 2;
       if (p[1] - r / 2 > ground(p[0] + dx * r, p[2] + dz * r)) lo = r;
@@ -609,7 +623,7 @@ const cosmeticKeys = new Set([
 ]);
 let meadowCache = { key: null, value: null };
 const meadowCacheKey = (c, tier) =>
-  tier + JSON.stringify(Object.entries(c).filter(([k]) => !cosmeticKeys.has(k)));
+  tier + (activeDem ? demKey(activeDem) : '') + JSON.stringify(Object.entries(c).filter(([k]) => !cosmeticKeys.has(k)));
 
 function instancedTiles(parent, geometry, material, items, tile, transform, colour) {
   const tiles = new Map(),
@@ -637,12 +651,67 @@ function instancedTiles(parent, geometry, material, items, tile, transform, colo
   return meshes;
 }
 
+// 0.6.8: the imported site: height-field mesh (draped with the satellite image when the packet has one), soil skirt and
+// underside, water zones, road ribbons. Returns the water meshes.
+function importedTerrain(c, m, parent, dem, ground, footprints) {
+  const built = buildTerrainGeometry(c, dem, ground);
+  let material = c.terrainMode === 'snow' ? m.snow : m.grass;
+  if (dem.texture) {
+    // The image already carries its own light and shade: toned down so the sun does not wash it out.
+    material = new T.MeshStandardMaterial({ map: dem.texture, color: '#b4b4b4', roughness: 1, metalness: 0 });
+    material.userData.ownedMaterial = true;
+  }
+  const terrain = new T.Mesh(built.geometry, material);
+  terrain.name = 'Imported terrain';
+  terrain.receiveShadow = true;
+  terrain.userData.noBatch = true;
+  parent.add(terrain);
+  const base = built.minY - 2,
+    centre = built.corners.reduce((a, p) => [a[0] + p[0] / 4, a[1] + p[1] / 4], [0, 0]);
+  m.soil.userData.snow.value = c.terrainMode === 'snow' ? 1 : 0;
+  const skirt = new T.Mesh(buildSkirt(built.sides, base, centre), m.soil);
+  skirt.name = 'Terrain edge soil';
+  skirt.receiveShadow = true;
+  skirt.userData.noBatch = true;
+  parent.add(skirt);
+  const under = new T.BufferGeometry();
+  under.setAttribute('position', new T.Float32BufferAttribute(built.corners.flatMap(([x, z]) => [x, base, z]), 3));
+  under.setAttribute('uv', new T.Float32BufferAttribute(built.corners.flatMap(([x, z]) => [x / 4, z / 4]), 2));
+  under.setIndex([0, 1, 2, 0, 2, 3]);
+  under.computeVertexNormals();
+  if (under.attributes.normal.getY(0) > 0) {
+    under.setIndex([0, 2, 1, 0, 3, 2]);
+    under.computeVertexNormals();
+  }
+  const slab = new T.Mesh(under, m.earth);
+  slab.name = 'Terrain underside';
+  slab.userData.noBatch = true;
+  parent.add(slab);
+  const waters = buildWater(c, dem, ground, m.water, parent);
+  m.grass.userData.waterLevel.value = waters.length ? Math.min(...waters.map(w => w.userData.level)) : -1e4;
+  const road = new T.MeshStandardMaterial({
+    color: m.asphalt.color,
+    map: m.asphalt.map,
+    normalMap: m.asphalt.normalMap,
+    roughness: m.asphalt.roughness,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  road.userData.ownedMaterial = true;
+  buildRoads(c, dem, ground, road, parent, (x, z) => intersectsRoad(footprints, x, z, 2));
+  parent.userData.demTriangles = built.triangles;
+  return waters;
+}
+
 export function addEnvironment(c, m, parent, fills) {
-  const L = totalLength(c),
+  // 0.6.8: D is the imported terrain, if any. Its scatter box (trees, meadow) is a fixed square round the bridge.
+  const D = activeDem,
+    L = totalLength(c),
     ss = stations(c),
     points = fills.flat(),
-    extent = fills.extent || Math.max(L + 2 * c.approach + 36, ...points.map(p => 2 * Math.abs(p[0]) + 8)),
-    halfZ = Math.max(c.sceneWidth / 2, ...points.map(p => Math.abs(p[2]) + 8)),
+    extent = D ? 260 : fills.extent || Math.max(L + 2 * c.approach + 36, ...points.map(p => 2 * Math.abs(p[0]) + 8)),
+    halfZ = D ? 130 : Math.max(c.sceneWidth / 2, ...points.map(p => Math.abs(p[2]) + 8)),
     rng = seeded(c.seed),
     obstacles = [],
     waters = [],
@@ -675,12 +744,14 @@ export function addEnvironment(c, m, parent, fills) {
       parent.add(fill);
     }
   }
-  c.spans.forEach((s, i) => {
-    if (s.obstacle !== 'water')
-      obstacles.push(crossing(c, (ss[i] + ss[i + 1]) / 2, s.angle, s.width, s.elevation, s.obstacle));
-  });
+  // 0.6.8: on imported terrain the DTM and its zones replace the crossings, the river and the procedural scenery.
+  if (!D)
+    c.spans.forEach((s, i) => {
+      if (s.obstacle !== 'water')
+        obstacles.push(crossing(c, (ss[i] + ss[i + 1]) / 2, s.angle, s.width, s.elevation, s.obstacle));
+    });
   const terrainHeight = terrainSampler(c);
-  for (const g of waterGroups(c)) {
+  for (const g of D ? [] : waterGroups(c)) {
     const first = c.spans[g.startIndex],
       last = c.spans[g.endIndex];
     const start = g.start + Math.max(1, (first.length - first.width) / 2),
@@ -761,6 +832,8 @@ export function addEnvironment(c, m, parent, fills) {
     parent.add(river);
     waters.push(river);
   }
+  if (D) waters.push(...importedTerrain(c, m, parent, D, terrainHeight, roadFootprints(c, fills)));
+  else {
   const terrainGeo = new T.PlaneGeometry(
     extent,
     halfZ * 2,
@@ -863,6 +936,7 @@ export function addEnvironment(c, m, parent, fills) {
     parent.add(cap);
   }
   box(parent, m.earth, 0, base - 0.2, 0, extent, 0.4, halfZ * 2);
+  }
   let railIndex = 0;
   // Two or more crossing roads form a divided highway: each carriageway carries one direction (right-hand
   // traffic: the carriageway on the right of the travel direction runs forwards).
@@ -994,13 +1068,17 @@ export function addEnvironment(c, m, parent, fills) {
     }
   }
   const roadZones = roadFootprints(c, fills),
-    corridorZones = crossingCorridors(c, extent, halfZ);
+    corridorZones = D ? [] : crossingCorridors(c, extent, halfZ);
+  // 0.6.8: imported site: off the water (and its banks), off the imported roads, inside the DTM.
+  const site = D ? demSite(D) : null,
+    demOccupied = (x, z, margin) =>
+      !!site && (site.shore(x, z) > -margin || roadDistance(D, x, z) < margin * 0.4 || !site.inside(x, z, 1));
   const occupied = (x, z, margin = 2) => {
     for (const o of obstacles) {
       const p = coordinates(o, x, z);
       if (Math.abs(p.across - (o.type === 'water' ? riverWiggle(p.along, c) : 0)) < o.width / 2 + margin) return true;
     }
-    return intersectsRoad(roadZones, x, z, margin);
+    return intersectsRoad(roadZones, x, z, margin) || demOccupied(x, z, margin);
   };
   // Woodland (0.6.2): groves where a low-frequency noise field is high, packed at 3–5 m with a few clearings, and
   // scattered trees elsewhere. Crowns may approach a road or river closer inside a grove (2.2 m per scale unit);
@@ -1028,7 +1106,7 @@ export function addEnvironment(c, m, parent, fills) {
           for (const t of spacingGrid.get(a * 4096 + b) ?? []) if (Math.hypot(t.x - x, t.z - z) < gap) return true;
       return false;
     };
-  for (let i = 0; i < treeBudget * 14 && c.environment === 'rural' && trees.length < treeBudget; i++) {
+  for (let i = 0; i < treeBudget * 14 && !D && c.environment === 'rural' && trees.length < treeBudget; i++) {
     const x = (rng() - 0.5) * (extent - 8),
       z = (rng() - 0.5) * (2 * halfZ - 8),
       wood = T.MathUtils.smoothstep(woodNoise(x, z), 0.5, 0.66),
@@ -1042,6 +1120,8 @@ export function addEnvironment(c, m, parent, fills) {
     if (!spacingGrid.has(key)) spacingGrid.set(key, []);
     spacingGrid.get(key).push(t);
   }
+  // 0.6.8: imported forest zones, thinning away from the bridge (twice the usual budget: the zones are real woods).
+  if (D) trees.push(...scatterForest(c, D, terrainHeight, rng, { budget: treeBudget * 2, occupied: (x, z, margin) => occupied(x, z, margin) }));
   // Shrubs: under and around the grove trees, 1–2.4 m high, never on roads, banks or supports.
   for (const t of trees) {
     const n = t.wood > 0.4 ? 2 : rng() < 0.35 ? 1 : 0;
@@ -1092,6 +1172,7 @@ export function addEnvironment(c, m, parent, fills) {
   // Budgeted meadow (grass.mjs): denser near the bridge and in clumps, never on the submerged banks.
   if (c.terrainMode !== 'snow') {
     const nearWater = (x, z) =>
+      demOccupied(x, z, 2.3) ||
       obstacles.some(o => {
         if (o.type !== 'water') return false;
         const p = coordinates(o, x, z);
@@ -1226,7 +1307,7 @@ export function addEnvironment(c, m, parent, fills) {
       meadow.flowers.forEach((f, i) => flowers.setColorAt(i, palette[f.kind]));
     }
   }
-  if (c.environment === 'urban') {
+  if (c.environment === 'urban' && !D) {
     const buildings = Object.fromEntries(buildingStyles.map(name => [name, []]));
     for (let x = -extent / 2 + 14; x < extent / 2 - 9; x += 13)
       for (let z = -halfZ + 12; z < halfZ - 7; z += 15) {

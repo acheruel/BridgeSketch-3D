@@ -2,7 +2,7 @@
 
 **Try it online:** [BridgeSketch 3D on GitHub Pages](https://acheruel.github.io/BridgeSketch-3D/)
 
-**A quick visual tool for bridge concepts** · Version 0.6.7 · 6 November 2026 · Anthony Chéruel
+**A quick visual tool for bridge concepts** · Version 0.6.8 · 6 November 2026 · Anthony Chéruel
 
 BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a span arrangement, deck, supports and site, then inspect the result from above, below or along the obstacle being crossed. It runs in the browser from static files, with no account, backend or build step.
 
@@ -18,6 +18,12 @@ BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a
 - **Parameters:** collapsible sections and formulas in numeric fields, such as `=12*3`.
 - **History:** undo and redo with Ctrl+Z / Ctrl+Y.
 - **Files and export:** save and open JSON, share link, PNG snapshot, GLB export and IFC export (2x3, 4, 4.3).
+
+## What's new in 0.6.8
+
+- **Import DTM/DSM (MNT/MNS):** a new button under the File menu opens [QuickerAtlas](https://acheruel.github.io/QuickerAtlas/), where you pick a block on the satellite map of Québec (search by structure number); QuickerAtlas extracts the 1 m LiDAR terrain from NRCan, detects water, forest and road zones (editable) and proposes the bridge axis. Back in BridgeSketch 3D you move and turn the bridge on a 2D map with a ground profile, then import: the terrain becomes a fine 3D mesh with the satellite image, and the approach fills, 2H:1V cones and footings follow the real ground. A `.bs3dterrain` file works too. The usual terrain and the eight examples stay the default.
+- **Truss footbridges:** the trusses stand outside the curbs, so the approach curbs run straight onto the bridge; caps and abutment seats widen so every bearing sits on concrete; chords, diagonals and posts are hollow tubes with rounded corners.
+- **IFC export, complete:** curbs, railings and their base plates, approach railings and slabs, road markings, street lights, gusset bolts, formliner and wing walls are now exported, each member as its own clean solid.
 
 ## What's new in 0.6.7
 

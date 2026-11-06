@@ -1,4 +1,4 @@
-// BridgeSketch 3D · IFC export (0.6.6). A plain STEP writer, no library: the bridge is rebuilt without batching and
+// BridgeSketch 3D · IFC export (0.6.6, audited in 0.6.8: every mesh of the model is exported). A plain STEP writer, no library: the bridge is rebuilt without batching and
 // every structural member becomes an IFC element with its own class, name, material, colour and property set.
 //
 // Three schemas:
@@ -12,7 +12,7 @@
 import * as T from 'three';
 import { alignmentStation, stations, totalLength, steelFinishes } from './geometry.mjs';
 import { concreteFinishes } from './materials.mjs';
-import { projectFrame } from './road-profile.mjs';
+import { FRONT_FACE, projectFrame } from './road-profile.mjs';
 
 export const IFC_SCHEMAS = {
   IFC2X3: { label: 'IFC 2x3', file: 'IFC2X3', view: 'CoordinationView_V2.0' },
@@ -72,13 +72,26 @@ class StepWriter {
 }
 
 // ─── Classification ───────────────────────────────────────────────────────────────────────────────────────
+// 0.6.8: every mesh of the model is exported (see the audit in dist/tests/check.mjs); the only exclusions are the
+// non-physical helpers listed in NON_PHYSICAL.
 // [pattern, IFC class, predefined type per schema (2x3 / 4 / 4.3), part: 'super' (superstructure) or 'sub']
+const PROXY = [null, 'ELEMENT', 'ELEMENT'];
 const RULES = [
+  [/^Road marking/, 'IfcBuildingElementProxy', PROXY, 'super'],
+  [/^Wheel curb/, 'IfcBuildingElementProxy', PROXY, 'super'],
+  [/^Slope protection/, 'IfcBuildingElementProxy', PROXY, 'sub'],
+  [/^Street light pole/, 'IfcBuildingElementProxy', PROXY, 'super'],
+  [/^LED luminaire|^Handrail LED/, 'IfcLightFixture', [null, 'NOTDEFINED', 'NOTDEFINED'], 'super'],
+  [/^Gusset bolts/, 'IfcMechanicalFastener', [null, 'BOLT', 'BOLT'], 'super'],
+  [/formliner/i, 'IfcCovering', ['CLADDING', 'CLADDING', 'CLADDING'], 'sub'],
+  [/^Approach slab/, 'IfcSlab', ['BASESLAB', 'BASESLAB', 'APPROACH_SLAB'], 'sub'],
+  [/^Approach pavement/, 'IfcSlab', ['BASESLAB', 'BASESLAB', 'PAVING'], 'sub'],
+  [/^Median island/, 'IfcSlab', ['FLOOR', 'FLOOR', 'SIDEWALK'], 'super'],
   [/^Deck slab|^Solid slab|^Concrete deck haunch/, 'IfcSlab', ['FLOOR', 'FLOOR', 'FLOOR'], 'super'],
-  [/^Wearing surface/, 'IfcCovering', ['FLOORING', 'FLOORING', 'TOPPING'], 'super'],
+  [/^Wearing surface/, 'IfcCovering', ['FLOORING', 'FLOORING', 'FLOORING'], 'super'],
   [/^Sidewalk/, 'IfcSlab', ['FLOOR', 'FLOOR', 'SIDEWALK'], 'super'],
   [/^Centre median/, 'IfcRailing', ['GUARDRAIL', 'GUARDRAIL', 'GUARDRAIL'], 'super'],
-  [/^Concrete barrier|^Railing/, 'IfcRailing', ['GUARDRAIL', 'GUARDRAIL', 'GUARDRAIL'], 'super'],
+  [/^Concrete barrier|^Railing|^Barrier rail|^W-beam/, 'IfcRailing', ['GUARDRAIL', 'GUARDRAIL', 'GUARDRAIL'], 'super'],
   [/Box girder part|^Span \d+ girder|^Continuous girder|box girder|^Box girder \d/, 'IfcBeam', [null, 'BEAM', 'GIRDER_SEGMENT'], 'super'],
   [/diaphragm|K-bracing/i, 'IfcBeam', [null, 'BEAM', 'DIAPHRAGM'], 'super'],
   [/^Tie beam|^Portal tie beam|^End cross-girder|^Floor beam|^Spandrel cross-beam/, 'IfcBeam', [null, 'BEAM', 'BEAM'], 'super'],
@@ -94,14 +107,14 @@ const RULES = [
   [/^Arch rib/, 'IfcMember', [null, 'MEMBER', 'ARCH_SEGMENT'], 'super'],
   [/^Hanger/, 'IfcMember', [null, 'MEMBER', 'SUSPENDER'], 'super'],
   [/^Bearing pad/, 'IfcBearing', ['ELASTOMERIC', 'ELASTOMERIC', 'ELASTOMERIC'], 'sub'],
-  [/^Bearing plinth/, 'IfcBuildingElementProxy', [null, 'ELEMENT', 'ELEMENT'], 'sub'],
+  [/^Bearing plinth/, 'IfcBuildingElementProxy', PROXY, 'sub'],
   [/^Pier cap|^Hammerhead flare/, 'IfcBeam', [null, 'BEAM', 'PIERCAP'], 'sub'],
   [/^Return wall|^MSE approach wall/, 'IfcWall', [null, 'SOLIDWALL', 'RETAININGWALL'], 'sub'],
   [/^Abutment seat|backwall|^Girder screen|^Pier wall|^Wingwall/, 'IfcWall', [null, 'SOLIDWALL', 'SOLIDWALL'], 'sub'],
   [/^Strutted frame leg|^Spandrel column|^Crown block/, 'IfcColumn', [null, 'COLUMN', 'COLUMN'], 'sub'],
   [/column|^Hammerhead stem|^Portal leg|^V pier arm|pier end$/i, 'IfcColumn', [null, 'COLUMN', 'PIERSTEM'], 'sub'],
-  [/footing/i, 'IfcFooting', ['PAD_FOOTING', 'PAD_FOOTING', 'PAD_FOOTING'], 'sub'],
 ];
+const FALLBACK = ['IfcBuildingElementProxy', PROXY, 'sub'];
 const SCHEMA_INDEX = { IFC2X3: 0, IFC4: 1, IFC4X3: 2 };
 
 // Display colours (sRGB) by material key of the BridgeSketch materials.
@@ -115,92 +128,174 @@ const MATERIAL_INFO = {
   guardrail: { name: 'Galvanised steel', colour: '#9da6a1' },
   sdc: { name: 'Painted steel', colour: '#d6dad8' },
   dark: { name: 'Elastomer', colour: '#253037' },
+  stone: { name: 'Stone riprap', colour: '#8c8a84' },
+  white: { name: 'Road marking paint', colour: '#ebe6cf' },
+  yellow: { name: 'Road marking paint', colour: '#eec45f' },
+  lens: { name: 'Luminaire glass', colour: '#2a2e33' },
 };
 
-const RAILING_KEYS = new Set(['railing', 'dark', 'sdc', 'guardrail']);
-// Details left out of the IFC: bolts (thousands of tiny solids), road markings, formliner ribs (the finish goes in
-// the property set of the walls instead).
-const SKIP = /^Gusset bolt|formliner/i;
+// Objects of the model that are not building elements and are therefore not exported: the road traffic, and the
+// light helpers (additive light pools, lamp glow sprites, point lights).
+const NON_PHYSICAL = /^(Traffic|Light pools|Lamp glow|Lamp light)$/;
+
+// « West approach railing » → « Approach railing » style helper: first letter in lower case.
+const lower = text => text.charAt(0).toLowerCase() + text.slice(1);
 
 // ─── Collect the bridge members ───────────────────────────────────────────────────────────────────────────
-// model: buildBridge(c, materials, { batch: false }); materials: the shared material set (to name materials).
+// model: buildBridge(c, materials, { batch: false, site: false, lights: true }); materials: the shared material set.
+// Returns the elements (one per group of meshes); the array's `skipped` lists the meshes left out, with the reason.
 export function collectElements(c, model, materials) {
   const key = new Map(Object.entries(materials).map(([k, v]) => [v, k])),
     L = totalLength(c),
     ss = stations(c),
     spanOf = s => Math.max(0, Math.min(c.spans.length - 1, ss.findIndex((v, i) => i > 0 && s <= v + 1e-6) - 1)),
     supportOf = s => ss.reduce((best, v, j) => (Math.abs(v - s) < Math.abs(ss[best] - s) ? j : best), 0),
-    groups = new Map();
+    groups = new Map(),
+    skipped = [];
   model.root.updateMatrixWorld(true);
-  const v = new T.Vector3();
-  const visit = (o, inDeck) => {
-    if (o.name === 'Traffic') return;
-    if (o.isMesh && !SKIP.test(o.name)) {
-      const mat = key.get(o.material) ?? 'concrete';
-      if (mat === 'white' || mat === 'yellow') return;
-      const pos = o.geometry.attributes.position,
-        index = o.geometry.index,
-        count = index ? index.count : pos.count,
-        world = new Float64Array(pos.count * 3);
-      let cx = 0,
-        cz = 0;
-      for (let i = 0; i < pos.count; i++) {
-        v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
-        world.set([v.x, v.y, v.z], i * 3);
-        cx += v.x / pos.count;
-        cz += v.z / pos.count;
-      }
-      const station = alignmentStation(c, cx, cz),
-        across = c.curved ? 0 : cz;
-      let name = o.name || '';
-      // Approach pavements and roadside W-beams are site works, not the bridge.
-      if (/^Approach pavement/.test(name) || mat === 'guardrail') return;
-      let group = o.userData.ifcGroup ?? null,
-        label = name;
-      if (!name && inDeck && RAILING_KEYS.has(mat)) {
-        // Steel railings: posts, rails, balusters and anchor plates merge into one railing per side.
-        const side = sideOf(c, cx, cz);
-        if (station < -25 || station > L + 25) return;
-        group = label = `Railing ${side < 0 ? 'left' : 'right'}`;
-      } else if (/^SDC baluster/.test(name)) {
-        group = label = `Railing ${sideOf(c, cx, cz) < 0 ? 'left' : 'right'}`;
-      } else if (/^Steel angle brace|^Bracing gusset/.test(name)) group = label = `Cross-frames span ${spanOf(station) + 1}`;
-      else if (/^Web stiffener/.test(name)) group = label = `Web stiffeners span ${spanOf(station) + 1}`;
-      else if (/^Support diaphragm|^K-bracing/.test(name)) group = label = `Support bracing axis ${supportOf(station)}`;
-      else if (/^Box girder part/.test(name)) group = label = 'Prestressed box girder';
-      else if (/^Box girder diaphragm/.test(name)) group = label = `Box girder diaphragm axis ${supportOf(station)}`;
-      else if (!name && o.parent?.name === 'Concrete deck haunches') group = label = 'Concrete deck haunches';
-      else if (!name) {
-        if (mat === 'dark') name = label = 'Bearing pad';
-        else return;
-      }
-      if (!group) group = `${label}#${o.id}`;
-      const rule = RULES.find(([pattern]) => pattern.test(label)) ?? [null, 'IfcBuildingElementProxy', [null, 'ELEMENT', 'ELEMENT'], 'sub'];
-      if (!groups.has(group))
-        groups.set(group, {
-          name: label,
-          cls: rule[1],
-          types: rule[2],
-          part: rule[3],
-          mat,
-          colour: colourOf(c, mat, o.material),
-          station,
-          across,
-          support: supportOf(station),
-          span: spanOf(station),
-          meshes: [],
-        });
-      const g = groups.get(group);
-      const tris = [];
-      for (let i = 0; i < count; i++) tris.push(index ? index.getX(i) : i);
-      g.meshes.push({ world, tris });
+  const v = new T.Vector3(),
+    m4 = new T.Matrix4();
+  // One physical piece: a mesh (or one instance of an InstancedMesh) with its world matrix.
+  const take = (o, matrix, name, mat, instance = -1) => {
+    const pos = o.geometry.attributes.position,
+      index = o.geometry.index,
+      count = index ? index.count : pos.count,
+      world = new Float64Array(pos.count * 3);
+    let cx = 0,
+      cz = 0;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(matrix);
+      world.set([v.x, v.y, v.z], i * 3);
+      cx += v.x / pos.count;
+      cz += v.z / pos.count;
     }
-    for (const child of o.children) visit(child, inDeck);
+    if (!world.every(Number.isFinite)) {
+      skipped.push({ name, reason: 'non-finite coordinates' });
+      return;
+    }
+    const station = alignmentStation(c, cx, cz),
+      side = sideOf(c, cx, cz),
+      sideName = side < 0 ? 'left' : 'right',
+      zone = station < -0.5 ? 'start' : station > L + 0.5 ? 'end' : 'bridge',
+      span = spanOf(station),
+      // « Railing left » on the bridge, « West approach railing left » beyond the abutments.
+      lab = (base, ...tail) =>
+        [zone === 'bridge' ? base : `${zone === 'start' ? 'West' : 'East'} approach ${lower(base)}`, ...tail].join(' ');
+    // `label` names the IFC element, `group` merges meshes into one element (null: one element per mesh) and
+    // `rule` picks the IFC class in RULES (the label when it is not set).
+    let label = name,
+      group = null,
+      rule = null;
+    if (o.userData.ifcGroup) group = label = o.userData.ifcGroup;
+    else if (name === 'Wheel curb') (group = label = lab(name, sideName)), (rule = 'Wheel curb');
+    else if (/^Railing (rail|post|base plate|picket)$|^SDC baluster$/.test(name)) (group = label = lab('Railing', sideName)), (rule = 'Railing');
+    else if (/^Barrier rail/.test(name)) (group = label = lab('Barrier rail 311A', sideName)), (rule = 'Barrier rail');
+    else if (/^W-beam/.test(name)) (group = label = lab('W-beam guardrail', sideName)), (rule = 'W-beam');
+    else if (/^Concrete barrier/.test(name)) (group = label = lab(name, sideName)), (rule = name);
+    else if (name === 'Road marking') (group = label = lab(`Road marking ${mat === 'yellow' ? 'yellow' : 'white'}`)), (rule = 'Road marking');
+    else if (name === 'Wearing surface') label = zone === 'bridge' ? `Wearing surface span ${span + 1}` : name;
+    else if (name === 'Sidewalk') (label = zone === 'bridge' ? `Sidewalk ${sideName} span ${span + 1}` : lab(name, sideName)), (rule = 'Sidewalk');
+    else if (name === 'Centre median') {
+      const island = c.medianType === 'sidewalk';
+      rule = island ? 'Median island' : name;
+      label = zone === 'bridge' ? `${rule} span ${span + 1}` : lab(rule);
+    } else if (name === 'Approach pavement') {
+      rule = mat === 'asphalt' ? 'Approach pavement' : 'Approach slab';
+      group = label = zone === 'bridge' ? rule : `${zone === 'start' ? 'West' : 'East'} ${lower(rule)}`;
+    } else if (name === 'Slope in front of abutment') {
+      rule = 'Slope protection';
+      label = `Slope protection ${supportOf(station) === 0 ? 'west' : 'east'}`;
+    } else if (name === 'Gusset bolt') group = label = `Gusset bolts span ${span + 1}`;
+    else if (/^Steel angle brace|^Bracing gusset/.test(name)) group = label = `Cross-frames span ${span + 1}`;
+    else if (/^Web stiffener/.test(name)) group = label = `Web stiffeners span ${span + 1}`;
+    else if (/^Support diaphragm|^K-bracing/.test(name)) group = label = `Support bracing axis ${supportOf(station)}`;
+    else if (/^Box girder part/.test(name)) group = label = 'Prestressed box girder';
+    else if (/^Box girder diaphragm/.test(name)) group = label = `Box girder diaphragm axis ${supportOf(station)}`;
+    else if (!name && o.parent?.name === 'Concrete deck haunches') group = label = 'Concrete deck haunches';
+    else if (!name) {
+      // Not expected: a mesh nobody named still reaches the IFC (as a proxy), never silently disappears.
+      group = label = `Unnamed ${MATERIAL_INFO[mat]?.name.toLowerCase() ?? mat} element`;
+      rule = 'Unnamed';
+    }
+    // Instanced street lights: the pole, the luminaire (head and lens) of one lamp stay together.
+    if (instance >= 0) group = label = rule = name === 'Street light poles' ? `Street light pole ${instance + 1}` : `LED luminaire ${instance + 1}`;
+    if (name === 'Handrail LED') group = label = rule = `Handrail LED ${sideName}`;
+    rule ??= label;
+    const found = RULES.find(([pattern]) => pattern.test(rule)) ?? [null, ...FALLBACK];
+    // Approaches are works around the bridge, not superstructure.
+    const part =
+      found[3] === 'super' && zone !== 'bridge' && /^(Wheel curb|Railing|Barrier rail|W-beam|Concrete barrier|Road marking|Sidewalk|Median island|Centre median)/.test(rule)
+        ? 'sub'
+        : found[3];
+    if (!group) group = `${label}#${o.id}${instance >= 0 ? '.' + instance : ''}`;
+    if (!groups.has(group))
+      groups.set(group, {
+        name: label,
+        role: roleOf(label),
+        cls: found[1],
+        types: found[2],
+        part,
+        mat,
+        side: /\b(left|right)\b/.test(label) ? sideName : null,
+        zone,
+        colour: colourOf(c, mat, o.material),
+        station,
+        across: c.curved ? 0 : cz,
+        support: supportOf(station),
+        span,
+        meshes: [],
+      });
+    const tris = [];
+    for (let i = 0; i < count; i++) tris.push(index ? index.getX(i) : i);
+    groups.get(group).meshes.push({ world, tris, src: o, mat, colour: colourOf(c, mat, o.material), flip: matrix.determinant() < 0 });
   };
-  visit(model.deck, true);
-  visit(model.structure, false);
-  return [...groups.values()];
+  const visit = o => {
+    if (NON_PHYSICAL.test(o.name)) {
+      skipped.push({ name: o.name, reason: 'non-physical helper', src: o });
+      return;
+    }
+    if (o.isInstancedMesh) {
+      for (let i = 0; i < o.count; i++) {
+        o.getMatrixAt(i, m4);
+        take(o, m4.clone().premultiply(o.matrixWorld), o.name, materialKey(o), i);
+      }
+      return;
+    }
+    if (o.isMesh) {
+      take(o, o.matrixWorld, o.name || '', materialKey(o));
+      return;
+    }
+    if (o.isLine || o.isPoints) skipped.push({ name: o.name, reason: 'not a solid', src: o });
+    for (const child of o.children) visit(child);
+  };
+  function materialKey(o) {
+    if (key.has(o.material)) return key.get(o.material);
+    if (/^LED lenses$/.test(o.name)) return 'lens';
+    return 'concrete';
+  }
+  visit(model.deck);
+  visit(model.structure);
+  // Street lights and handrail LEDs (buildBridge(..., { lights: true })).
+  if (model.lighting?.group) visit(model.lighting.group);
+  // The riprap slope in front of an abutment is the only part of the site that belongs to the bridge works.
+  for (const o of model.setting?.children ?? []) if (o.isMesh && o.name === 'Slope in front of abutment') visit(o);
+  return Object.assign([...groups.values()], { skipped });
 }
+
+// True for an object, or any ancestor, that is a non-physical helper (traffic, light pools, glow sprites).
+export function isNonPhysical(o) {
+  for (let q = o; q; q = q.parent) if (NON_PHYSICAL.test(q.name)) return true;
+  return false;
+}
+
+// The role of an element: its name without side, span, axis or approach qualifiers (the IFC ObjectType).
+const roleOf = name =>
+  name
+    .replace(/^(West|East) approach /, 'Approach ')
+    .replace(/ (left|right)\b/g, '')
+    .replace(/ (span|axis) \d+$/i, '')
+    .replace(/ \d+$/, '')
+    .replace(/ (west|east)$/, '');
 
 // Display colour of an element: the chosen steel paint and concrete finish rather than the lit material colour.
 function colourOf(c, mat, material) {
@@ -223,46 +318,97 @@ function sideOf(c, x, z) {
   return Math.sign((x - cx) * nx + (z - cz) * nz) || 1;
 }
 
-// Merge an element's meshes into one vertex list (welded at 0.1 mm) and a triangle list, in project coordinates.
-function weld(meshes, toProject) {
+// Weld one mesh (0.1 mm) into project coordinates; each mesh stays its own shell, so touching members never share
+// an edge. A closed mesh is made manifold and outward-facing: triangles are re-oriented across shared edges, and
+// the shell is turned inside out when its signed volume is negative (mirrored or negatively scaled meshes).
+export function weldMesh({ world, tris, flip = false }, toProject, mirrored = false) {
   const points = [],
     lookup = new Map(),
+    local = new Map(),
     triangles = [];
-  for (const { world, tris } of meshes) {
-    const local = new Map();
-    const id = i => {
-      if (local.has(i)) return local.get(i);
-      const p = toProject(world[i * 3], world[i * 3 + 1], world[i * 3 + 2]),
-        k = p.map(v => Math.round(v * 1e4)).join(',');
-      let n = lookup.get(k);
-      if (n === undefined) {
-        n = points.length;
-        points.push(p);
-        lookup.set(k, n);
-      }
-      local.set(i, n);
-      return n;
-    };
-    for (let i = 0; i + 2 < tris.length; i += 3) {
-      const a = id(tris[i]),
-        b = id(tris[i + 1]),
-        c = id(tris[i + 2]);
-      if (a !== b && b !== c && a !== c) triangles.push([a, b, c]);
+  const id = i => {
+    if (local.has(i)) return local.get(i);
+    const p = toProject(world[i * 3], world[i * 3 + 1], world[i * 3 + 2]),
+      k = p.map(v => Math.round(v * 1e4)).join(',');
+    let n = lookup.get(k);
+    if (n === undefined) {
+      n = points.length;
+      points.push(p);
+      lookup.set(k, n);
     }
+    local.set(i, n);
+    return n;
+  };
+  const turned = flip !== mirrored;
+  for (let i = 0; i + 2 < tris.length; i += 3) {
+    const a = id(tris[i]),
+      b = id(turned ? tris[i + 2] : tris[i + 1]),
+      c = id(turned ? tris[i + 1] : tris[i + 2]);
+    if (a !== b && b !== c && a !== c) triangles.push([a, b, c]);
   }
   // Closed when every edge is shared by exactly two triangles.
   const edges = new Map();
-  for (const [a, b, c] of triangles)
+  triangles.forEach(([a, b, c], t) => {
     for (const [p, q] of [
       [a, b],
       [b, c],
       [c, a],
     ]) {
       const k = p < q ? `${p}_${q}` : `${q}_${p}`;
-      edges.set(k, (edges.get(k) ?? 0) + 1);
+      if (!edges.has(k)) edges.set(k, []);
+      edges.get(k).push(t);
     }
-  const closed = triangles.length > 3 && [...edges.values()].every(n => n === 2);
-  return { points, triangles, closed };
+  });
+  const closed = triangles.length > 3 && [...edges.values()].every(t => t.length === 2);
+  let repaired = 0;
+  if (closed) {
+    // Orient every triangle like its neighbours (flood fill over the shared edges).
+    const seen = new Uint8Array(triangles.length),
+      queue = [0];
+    seen[0] = 1;
+    const directed = (t, p, q) => {
+      const [a, b, c] = triangles[t];
+      return (a === p && b === q) || (b === p && c === q) || (c === p && a === q);
+    };
+    let ok = true;
+    for (let h = 0; h < queue.length; h++) {
+      const t = queue[h],
+        [a, b, c] = triangles[t];
+      for (const [p, q] of [
+        [a, b],
+        [b, c],
+        [c, a],
+      ]) {
+        const other = edges.get(p < q ? `${p}_${q}` : `${q}_${p}`).find(x => x !== t);
+        if (seen[other]) {
+          // Already placed: the two triangles must run the shared edge in opposite directions.
+          if (directed(other, p, q)) ok = false;
+          continue;
+        }
+        seen[other] = 1;
+        if (directed(other, p, q)) {
+          const [x, y, z] = triangles[other];
+          triangles[other] = [x, z, y];
+          repaired++;
+        }
+        queue.push(other);
+      }
+    }
+    if (queue.length !== triangles.length) ok = false;
+    if (ok) {
+      // Signed volume (divergence theorem); negative means the normals point inwards.
+      let volume = 0;
+      for (const [a, b, c] of triangles) {
+        const [p, q, r] = [points[a], points[b], points[c]];
+        volume +=
+          (p[0] * (q[1] * r[2] - q[2] * r[1]) - p[1] * (q[0] * r[2] - q[2] * r[0]) + p[2] * (q[0] * r[1] - q[1] * r[0])) / 6;
+      }
+      if (volume < 0) for (let t = 0; t < triangles.length; t++) triangles[t] = [triangles[t][0], triangles[t][2], triangles[t][1]];
+      return { points, triangles, closed: true, volume: Math.abs(volume), repaired };
+    }
+    return { points, triangles, closed: false, volume: 0, repaired };
+  }
+  return { points, triangles, closed: false, volume: 0, repaired };
 }
 
 // Coplanar, edge-connected triangles merge into one polygon when their region has a single boundary loop (no
@@ -447,32 +593,73 @@ export function exportIfc(c, model, materials, options = {}) {
   const finish = steelFinishes[c.steelColor] ? `AMS ${c.steelColor}` : c.steelColor;
   const counts = {};
   elements.sort((a, b) => a.station - b.station);
+  // Mirrored frames would turn every shell inside out: probe the handedness of the model → project mapping.
+  const probe = [toProject(0, 0, 0), toProject(1, 0, 0), toProject(0, 1, 0), toProject(0, 0, 1)],
+    e1 = probe[1].map((q, k) => q - probe[0][k]),
+    e2 = probe[2].map((q, k) => q - probe[0][k]),
+    e3 = probe[3].map((q, k) => q - probe[0][k]),
+    mirrored =
+      e1[0] * (e2[1] * e3[2] - e2[2] * e3[1]) - e1[1] * (e2[0] * e3[2] - e2[2] * e3[0]) + e1[2] * (e2[0] * e3[1] - e2[1] * e3[0]) < 0;
+  const stats = { solids: 0, shells: 0, repaired: 0, triangles: 0 };
   for (const e of elements) {
-    const { points, triangles, closed } = weld(e.meshes, toProject);
-    if (!triangles.length) continue;
-    let item, kind;
-    if (ifc2x3) {
-      // Faceted B-rep (closed solids) or a shell-based surface model, with shared points; coplanar triangles
-      // merge into polygons, which keeps the file about four times smaller.
-      const ids = points.map(p => point(p)),
-        faces = planarFaces(points, triangles).map(loop =>
-          w.add('IFCFACE', list([w.add('IFCFACEOUTERBOUND', w.add('IFCPOLYLOOP', list(loop.map(k => ids[k]))), '.T.')])),
-        ),
-        shell = closed ? w.add('IFCCLOSEDSHELL', list(faces)) : w.add('IFCOPENSHELL', list(faces));
-      item = closed ? w.add('IFCFACETEDBREP', shell) : w.add('IFCSHELLBASEDSURFACEMODEL', list([shell]));
-      kind = closed ? 'Brep' : 'SurfaceModel';
-    } else {
-      const coords = list(points.map(p => list(p.map(v => real(v, 4))))),
-        pointList = ifc43 ? w.add('IFCCARTESIANPOINTLIST3D', coords, $) : w.add('IFCCARTESIANPOINTLIST3D', coords);
-      item = w.add('IFCTRIANGULATEDFACESET', pointList, $, closed ? '.T.' : '.F.', list(triangles.map(t => list(t.map(k => String(k + 1))))), $);
-      kind = 'Tessellation';
+    // One welded shell per mesh; meshes of one colour share an IFC representation item (IFC 4) or are one B-rep
+    // each (IFC 2x3).
+    const parts = e.meshes.map(m => ({ ...weldMesh(m, toProject, mirrored), colour: m.colour })).filter(p => p.triangles.length);
+    if (!parts.length) continue;
+    for (const p of parts) {
+      stats[p.closed ? 'solids' : 'shells']++;
+      stats.repaired += p.repaired;
+      stats.triangles += p.triangles.length;
     }
-    w.add('IFCSTYLEDITEM', item, list([styleFor(e.colour ?? '#a5a397')]), $);
-    const shape = w.add('IFCPRODUCTDEFINITIONSHAPE', $, $, list([w.add('IFCSHAPEREPRESENTATION', body, S('Body'), S(kind), list([item]))]));
-    // IFC 2x3 and 4 have no IfcBearing: a building element proxy named « Bearing ».
+    const items = [];
+    let kind;
+    if (ifc2x3) {
+      // Faceted B-rep per closed solid, or one shell-based surface model when the element has an open shell; shared
+      // points, and coplanar triangles merge into polygons, which keeps the file about four times smaller.
+      const shellOf = p => {
+        const ids = p.points.map(q => point(q)),
+          faces = planarFaces(p.points, p.triangles).map(loop =>
+            w.add('IFCFACE', list([w.add('IFCFACEOUTERBOUND', w.add('IFCPOLYLOOP', list(loop.map(k => ids[k]))), '.T.')])),
+          );
+        return p.closed ? w.add('IFCCLOSEDSHELL', list(faces)) : w.add('IFCOPENSHELL', list(faces));
+      };
+      if (parts.every(p => p.closed)) {
+        kind = 'Brep';
+        for (const p of parts) items.push({ item: w.add('IFCFACETEDBREP', shellOf(p)), colour: p.colour });
+      } else {
+        kind = 'SurfaceModel';
+        for (const p of parts) items.push({ item: w.add('IFCSHELLBASEDSURFACEMODEL', list([shellOf(p)])), colour: p.colour });
+      }
+    } else {
+      kind = 'Tessellation';
+      for (const colour of new Set(parts.map(p => p.colour))) {
+        const mine = parts.filter(p => p.colour === colour),
+          pts = [],
+          tris = [];
+        for (const p of mine) {
+          const base = pts.length;
+          for (const q of p.points) pts.push(q);
+          for (const t of p.triangles) tris.push(t.map(k => String(k + base + 1)));
+        }
+        const coords = list(pts.map(p => list(p.map(v => real(v, 4))))),
+          pointList = ifc43 ? w.add('IFCCARTESIANPOINTLIST3D', coords, $) : w.add('IFCCARTESIANPOINTLIST3D', coords);
+        items.push({
+          item: w.add('IFCTRIANGULATEDFACESET', pointList, $, mine.every(p => p.closed) ? '.T.' : '.F.', list(tris.map(t => list(t))), $),
+          colour,
+        });
+      }
+    }
+    for (const { item, colour } of items) w.add('IFCSTYLEDITEM', item, list([styleFor(colour ?? '#a5a397')]), $);
+    const shape = w.add(
+      'IFCPRODUCTDEFINITIONSHAPE',
+      $,
+      $,
+      list([w.add('IFCSHAPEREPRESENTATION', body, S('Body'), S(kind), list(items.map(i => i.item)))]),
+    );
+    // IFC 2x3 and 4 have no IfcBearing, IFC 2x3 no IfcLightFixture: building element proxies named after the role.
     let cls = e.cls,
       type = e.types[si];
-    if (cls === 'IfcBearing' && !ifc43) {
+    if ((cls === 'IfcBearing' && !ifc43) || (cls === 'IfcLightFixture' && ifc2x3)) {
       cls = 'IfcBuildingElementProxy';
       type = ifc2x3 ? null : 'ELEMENT';
     }
@@ -480,12 +667,14 @@ export function exportIfc(c, model, materials, options = {}) {
     // Placed in its container; the offset cancels the level elevation, so coordinates stay absolute.
     const elementPlacement = placement(container.at, -container.z);
     counts[e.name] = (counts[e.name] ?? 0) + 1;
-    const objectType = e.name.replace(/ (\d+)$/, '').replace(/ span \d+$| axis \d+$/i, ''),
+    const objectType = e.role,
       args = [S(guid()), oh, S(e.name), $, S(objectType), elementPlacement, shape, $];
-    // Predefined type: IFC4 and 4.3 always; 2x3 only for the classes that have it.
-    const has2x3Type = ['IfcSlab', 'IfcFooting', 'IfcRailing', 'IfcCovering', 'IfcBuildingElementProxy'].includes(cls);
-    if (!ifc2x3) args.push(enumv(type ?? 'NOTDEFINED'));
-    else if (has2x3Type) args.push(cls === 'IfcBuildingElementProxy' ? $ : enumv(type ?? 'NOTDEFINED'));
+    // Class-specific tail: predefined type (IFC 4 and 4.3 always; 2x3 only for the classes that have it) and the
+    // nominal size of a fastener.
+    if (cls === 'IfcMechanicalFastener') args.push($, $, ...(ifc2x3 ? [] : [enumv(type ?? 'NOTDEFINED')]));
+    else if (!ifc2x3) args.push(enumv(type ?? 'NOTDEFINED'));
+    else if (['IfcSlab', 'IfcFooting', 'IfcRailing', 'IfcCovering'].includes(cls)) args.push(enumv(type ?? 'NOTDEFINED'));
+    else if (cls === 'IfcBuildingElementProxy') args.push($);
     const element = w.add(cls.toUpperCase(), ...args);
     if (!contained.has(container.id)) contained.set(container.id, []);
     contained.get(container.id).push(element);
@@ -497,9 +686,11 @@ export function exportIfc(c, model, materials, options = {}) {
       props = [
         prop('Role', label(objectType)),
         prop(e.part === 'super' ? 'Span' : 'Support', e.part === 'super' ? `IFCINTEGER(${e.span + 1})` : label(e.support === 0 ? 'Abutment West' : e.support === c.spans.length ? 'Abutment East' : `Pier ${e.support}`)),
-        prop('Chainage', `IFCLENGTHMEASURE(${real(e.station - 0.9, 3)})`),
+        prop('Chainage', `IFCLENGTHMEASURE(${real(e.station - FRONT_FACE, 3)})`),
         prop('Material', label(materialName)),
       ];
+    if (e.side) props.push(prop('Side', label(e.side)));
+    if (e.zone !== 'bridge') props.push(prop('Zone', label(e.zone === 'start' ? 'West approach' : 'East approach')));
     if (/steel/i.test(materialName) && e.mat.startsWith('steel')) props.push(prop('Paint', label(`${finish} · ${e.colour}`)));
     if (/^Abutment seat|^Return wall|^Wingwall|^Girder screen/.test(e.name))
       props.push(prop('Finish', label(c.abutmentFinish === 'formliner' ? 'Architectural formliner, vertical ribs 40 mm' : 'Smooth formwork')));
@@ -538,5 +729,11 @@ export function exportIfc(c, model, materials, options = {}) {
     'ENDSEC;',
     'DATA;',
   ];
-  return { text: [...header, ...w.lines, 'ENDSEC;', 'END-ISO-10303-21;', ''].join('\n'), elements: Object.values(counts).reduce((a, b) => a + b, 0), counts };
+  return {
+    text: [...header, ...w.lines, 'ENDSEC;', 'END-ISO-10303-21;', ''].join('\n'),
+    elements: Object.values(counts).reduce((a, b) => a + b, 0),
+    counts,
+    stats,
+    skipped: elements.skipped,
+  };
 }

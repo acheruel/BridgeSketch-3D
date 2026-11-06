@@ -26,9 +26,9 @@ import {
   stations,
   frame,
   TRUSS_DEPTH,
-  TRUSS_OVER,
+  trussAxis,
   trussChord,
-  trussInset,
+  bearingPositions,
 } from './geometry.mjs';
 import { psboxParts } from './systems.mjs';
 import { profileCsv, profileTable, frenchNumber } from './road-profile.mjs';
@@ -68,6 +68,7 @@ import { createPost } from './post.mjs';
 import { cloudShadow, concreteFinishes } from './materials.mjs';
 import { renderSettings, effectiveQuality, setGpuName, stepDownAuto, gpuInfo } from './quality.mjs';
 import { createHistory } from './history.mjs';
+import { createDemImport, saveOverlay, loadOverlay, clearOverlay } from './dem-ui.mjs';
 import {
   isNum,
   numValue,
@@ -94,6 +95,9 @@ let config = makePreset(presets[0].id),
   controls,
   scene,
   materials,
+  // 0.6.8: imported terrain (DTM / DSM from QuickerAtlas), a session overlay: { packet, placement, texture } or null.
+  // Not part of the config, the share link or the saved .json; IndexedDB keeps it across reloads (dem-ui.mjs).
+  demOverlay = null,
   sky,
   skyTime = 0,
   view = 'perspective',
@@ -800,12 +804,13 @@ function renderSection() {
   } else if (truss) {
     // 0.6.6: steel truss: floor beam under the slab between the bottom chords, the chords and a post in elevation
     // behind the cut; a through truss adds its top strut.
-    const tu = half - TRUSS_OVER,
+    // 0.6.8: the trusses stand outside the curbs; the slab stops at the deck edge, the floor beam runs to the chords.
+    const tu = trussAxis(c),
       cw = trussChord(c),
       axis = -0.065 - c.deck - 0.05 - TRUSS_DEPTH + cw / 2,
       paint = steelFinishes[c.steelColor] ?? c.steelColor,
-      inner = tu - cw / 2;
-    drawing += rectangle(-inner, inner, -0.065 - c.deck, -0.065 - c.deck - 0.4, paint);
+      inner = half;
+    drawing += rectangle(-(tu - cw / 2), tu - cw / 2, -0.065 - c.deck, -0.065 - c.deck - 0.4, paint);
     for (const side of [-1, 1]) {
       const u = side * tu;
       drawing += rectangle(u - 0.09, u + 0.09, axis + c.trussHeight, axis, '#d8dcdc');
@@ -979,10 +984,9 @@ function renderSection() {
       result += rectangle(u - 0.075, u + 0.075, curb + y + 0.04, curb + y - 0.04, '#879597');
     return result;
   };
-  const railEdge = truss ? half - trussInset(c) : half;
   drawing +=
-    railing(-railEdge, -1, c.leftRailing, road.left ? walkTop(-1, -half) : null) +
-    railing(railEdge, 1, c.rightRailing, road.right ? walkTop(1, half) : null);
+    railing(-half, -1, c.leftRailing, road.left ? walkTop(-1, -half) : null) +
+    railing(half, 1, c.rightRailing, road.right ? walkTop(1, half) : null);
   if (c.sidewalkRailing !== 'none')
     for (const [side, on] of [
       [-1, road.left],
@@ -1016,6 +1020,7 @@ function renderSection() {
   chain(deckMarks, 1.85);
   chain([-half, half], 2.45);
   if (c.material === 'psbox') chain([-half, half, ...psboxLayout(c).centres], bottom - 0.55, bottom - 0.1);
+  else if (truss) chain([-half, half, ...bearingPositions(c)], bottom - 0.55, bottom - 0.1);
   else if (c.material !== 'slab' && c.girders > 1)
     chain([-half, half, ...Array.from({ length: c.girders }, (_, g) => -half + c.overhang + g * spacing(c))], bottom - 0.55, bottom - 0.1);
   // Structure depth at the section, beside the left edge.
@@ -1121,7 +1126,7 @@ function rebuild(raw, { resetCamera = false, refresh = false, noHistory = false,
   stopDriving();
   const next = validate(raw),
     started = performance.now(),
-    replacement = buildBridge(next, materials);
+    replacement = buildBridge(next, materials, { dem: demOverlay });
   if (model) {
     scene.remove(model.root);
     disposeModel(model);
@@ -1201,6 +1206,10 @@ function rebuild(raw, { resetCamera = false, refresh = false, noHistory = false,
     },
     update: raw => update(raw, { refresh: true }),
     sketchy: () => startGame(),
+    // 0.6.8 test hooks for the imported terrain: place a packet without the dialog, read the state, remove it.
+    importDem: (packet, placement) => importDem(packet, placement),
+    removeDem: () => removeDem(),
+    demState: () => (demOverlay ? { placement: { ...demOverlay.placement }, grid: demOverlay.packet.grid, zones: demOverlay.packet.zones.length } : null),
     get game() {
       return game;
     },
@@ -1585,6 +1594,16 @@ async function boot() {
   controls.maxPolarAngle = Math.PI * 0.5;
   controls._customWheelEvent = normalizedWheel;
   materials = makeMaterials(() => (needsRender = true));
+  // 0.6.8: the imported terrain of the previous session comes back with the page (IndexedDB), if the user kept one.
+  try {
+    const saved = await loadOverlay();
+    if (saved && ['cx', 'cy', 'azimuth', 'zOffset'].every(k => Number.isFinite(saved.placement?.[k]))) {
+      demOverlay = { packet: saved.packet, placement: saved.placement, texture: await demTexture(saved.packet) };
+      demImport.refreshButton();
+    }
+  } catch (e) {
+    console.warn('Imported terrain not restored:', e);
+  }
   if (location.hash) {
     try {
       const saved = decodeConfig(location.hash);
@@ -2268,7 +2287,7 @@ $('exportIfc').onclick = async () => {
       localStorage.setItem('bridgesketch-ifc-schema', schema);
     } catch {}
     const { exportIfc } = await import('./ifc-export.mjs');
-    copy = buildBridge(config, materials, { batch: false, site: false });
+    copy = buildBridge(config, materials, { batch: false, site: false, lights: true, dem: demOverlay });
     const o = profileOptions(),
       result = exportIfc(config, copy, materials, {
         schema,
@@ -2394,7 +2413,86 @@ function registerTools() {
     }
   }
 }
+// 0.6.8: imported terrain (« Import DTM/DSM » in the project bar). The packet comes from QuickerAtlas (postMessage or a
+// .bs3dterrain file, dem-ui.mjs); the overlay is kept apart from the config.
+async function demTexture(packet) {
+  if (!packet.image) return null;
+  try {
+    const img = new Image();
+    img.src = packet.image.dataUrl;
+    await img.decode();
+    let source = img;
+    const limit = Math.min(renderer?.capabilities.maxTextureSize ?? 4096, 4096);
+    if (Math.max(img.width, img.height) > limit) {
+      const k = limit / Math.max(img.width, img.height),
+        canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * k);
+      canvas.height = Math.round(img.height * k);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      source = canvas;
+    }
+    const texture = new T.Texture(source);
+    texture.colorSpace = T.SRGBColorSpace;
+    texture.anisotropy = Math.min(8, renderer?.capabilities.getMaxAnisotropy() ?? 1);
+    texture.needsUpdate = true;
+    return texture;
+  } catch (e) {
+    console.warn('Terrain image not used:', e);
+    return null;
+  }
+}
+async function setDem(data) {
+  const previous = demOverlay,
+    texture = data ? await demTexture(data.packet) : null;
+  demOverlay = data ? { packet: data.packet, placement: data.placement, texture } : null;
+  try {
+    await update(config, { refresh: true, resetCamera: true, noHistory: true });
+  } catch (e) {
+    texture?.dispose();
+    demOverlay = previous;
+    await update(config, { refresh: true, resetCamera: true, noHistory: true }).catch(() => {});
+    throw e;
+  }
+  previous?.texture?.dispose();
+  if (data) await saveOverlay({ packet: data.packet, placement: data.placement });
+  else await clearOverlay();
+  demImport.refreshButton();
+}
+async function importDem(raw, placement) {
+  const { validatePacket, autoPlacement } = await import('./terrain-packet.mjs'),
+    packet = validatePacket(raw);
+  await setDem({ packet, placement: placement ?? autoPlacement(packet, config) });
+  notify('Terrain imported. Move or turn the bridge from « Imported terrain ».');
+}
+async function removeDem() {
+  await setDem(null);
+  notify('Imported terrain removed: back to the procedural terrain.');
+}
+const demImport = createDemImport({
+  $,
+  getConfig: () => config,
+  getOverlay: () => demOverlay,
+  apply: async data => {
+    await setDem(data);
+    notify('Terrain imported. Open « Imported terrain » to move or turn the bridge, or to remove it.');
+  },
+  remove: removeDem,
+  notify,
+});
+// QuickerAtlas can also open this page with #terrain-import and wait for { type: 'bs3d-ready' } before sending.
+const terrainHash = location.hash === '#terrain-import';
+if (terrainHash) {
+  history.replaceState(null, '', location.pathname + location.search);
+  window.opener?.postMessage({ type: 'bs3d-ready' }, '*');
+  demImport.open({ waiting: true });
+}
 window.addEventListener('hashchange', async () => {
+  if (location.hash === '#terrain-import') {
+    history.replaceState(null, '', location.pathname + location.search);
+    window.opener?.postMessage({ type: 'bs3d-ready' }, '*');
+    demImport.open({ waiting: true });
+    return;
+  }
   try {
     const saved = decodeConfig(location.hash);
     await update(saved.config, { refresh: true, resetCamera: true, baseline: true });

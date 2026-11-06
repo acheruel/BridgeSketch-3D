@@ -132,14 +132,25 @@ export const defaults = {
   spans: [25, 25, 25].map(length => ({ length, obstacle: 'water', width: 22, elevation: 0, angle: 90 })),
 };
 export const depths = [1, 1.2, 1.4, 1.6, 1.8];
-// Steel truss footbridges (0.6.6): truss axes 300 mm inside the deck edges; under the slab, 400 mm floor beams
-// frame into the bottom chords (structure depth 500 mm below the haunch line).
-export const TRUSS_OVER = 0.3;
+// Steel truss footbridges (0.6.6): the deck rests on 400 mm floor beams that frame into the bottom chords (structure
+// depth 500 mm below the haunch line).
+// 0.6.8: the trusses stand OUTSIDE the deck. c.width is the deck from curb to curb, exactly the width of the approach
+// roads, so the wheel curbs continue straight from the approaches onto the bridge; each chord's inner face is 20 mm
+// beyond the curb (TRUSS_GAP) and the floor beams run out to it.
+export const TRUSS_GAP = 0.02;
 export const TRUSS_DEPTH = 0.5;
 export const isTruss = c => c.structureSystem === 'truss';
 export const trussChord = c => (c.trussHeight > 2.6 ? 0.36 : 0.3);
-// From the deck edge to the inner face of the bottom chord, where the path railings stand.
-export const trussInset = c => TRUSS_OVER + trussChord(c) / 2 + 0.02;
+// |u| of each truss line (bottom chord axis).
+export const trussAxis = c => c.width / 2 + TRUSS_GAP + trussChord(c) / 2;
+// Bearing under each truss line: pad 550 mm along the road, a little wider than the chord across it; the concrete
+// plinth under the pad is 240 mm larger across (and 800 mm long).
+export const trussBearing = c => {
+  const across = Math.max(0.48, trussChord(c) + 0.14);
+  return { along: 0.55, across, plinthAlong: 0.8, plinthAcross: across + 0.24 };
+};
+// Half-width of the pier caps and abutment seats: truss line + half the plinth + 200 mm edge margin.
+export const trussSupportHalf = c => trussAxis(c) + trussBearing(c).plinthAcross / 2 + 0.2;
 // Cast-in-place and prestressed concrete superstructures: solid slab and box girder (« psbox »).
 export const isConcreteDeck = c => c.material === 'slab' || c.material === 'psbox';
 // Prestressed box girder layout: 1–4 single-cell boxes side by side under one deck slab (a single box gets two
@@ -166,6 +177,8 @@ export function bearingPositions(c) {
       d = Math.max(0.5, box.bottom - 0.45);
     return box.centres.flatMap(u => (box.cells > 1 ? [u - d, u, u + d] : [u - d, u + d]));
   }
+  // 0.6.8: one bearing under each truss line, outside the deck.
+  if (c.structureSystem === 'truss') return [-trussAxis(c), trussAxis(c)];
   return Array.from({ length: c.girders }, (_, g) => -c.width / 2 + c.overhang + g * spacing(c));
 }
 // Supports without bearings: every support of a rigid frame, the leg joints of a strutted frame.
@@ -248,9 +261,9 @@ export const roadLayout = c => {
   const left = c.sidewalkSide === 'left' || c.sidewalkSide === 'both',
     right = c.sidewalkSide === 'right' || c.sidewalkSide === 'both';
   // Type 201 is 410 mm wide, Type 301 435 mm; steel railings stand on 450 mm curbs or sidewalks.
-  const inset = c.structureSystem === 'truss' ? trussInset(c) : 0,
-    leftBarrierWidth = edgeWidth(c.leftRailing) + inset,
-    rightBarrierWidth = edgeWidth(c.rightRailing) + inset;
+  // 0.6.8: trusses stand outside the deck, so the curbs sit at the deck edge like on every other bridge.
+  const leftBarrierWidth = edgeWidth(c.leftRailing),
+    rightBarrierWidth = edgeWidth(c.rightRailing);
   const barrierWidth = Math.max(leftBarrierWidth, rightBarrierWidth),
     innerBarrier = c.sidewalkRailing === 'none' ? 0 : edgeWidth(c.sidewalkRailing);
   const roadMin = -c.width / 2 + leftBarrierWidth + (left ? c.sidewalkWidth + innerBarrier : 0),
@@ -526,7 +539,7 @@ export function validate(raw) {
     Object.assign(c, {
       material: 'steel',
       girders: 2,
-      overhang: TRUSS_OVER,
+      overhang: 0.3, // unused by trusses (bearings: trussAxis); 0.3 m is the footbridge minimum of the field
       depth: TRUSS_DEPTH,
       variableDepth: false,
       sidewalkSide: 'none',

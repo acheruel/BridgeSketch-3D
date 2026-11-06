@@ -112,6 +112,19 @@
           </button>
           <input id="file" type="file" accept=".json,application/json" hidden />
         </div>
+        <!-- 0.6.8: terrain from QuickerAtlas (DTM / DSM), an option; the procedural terrain and the examples stay the default -->
+        <div class="dem-bar">
+          <button
+            id="dem-open"
+            class="menu-button"
+            type="button"
+            aria-haspopup="dialog"
+            title="Import MNT/MNS (QuickerAtlas)"
+          >
+            <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 19 6-10 4 6 2.5-4L21 19Z"/><path d="M3 19h18"/></svg
+            ><span>Import DTM/DSM</span>
+          </button>
+        </div>
         <div id="restore-bar" hidden>
           <div class="rb-text"><b>Unsaved model found</b><small id="restore-info"></small></div>
           <div class="rb-actions">
@@ -1061,6 +1074,62 @@
         </div>
       </form>
     </dialog>
+    <!-- 0.6.8: import of a DTM / DSM block prepared in QuickerAtlas (bs3d-terrain packet) -->
+    <dialog id="dem-dialog" aria-labelledby="demTitle">
+      <form method="dialog">
+        <button class="close-dialog" aria-label="Close" value="close">×</button>
+        <h2 id="demTitle">Import DTM / DSM · MNT / MNS</h2>
+        <p id="dem-intro">
+          Pick a block on the satellite map in QuickerAtlas; it comes back here as a fine 3D terrain with its water,
+          forest and road zones. The bridge is not dropped into the middle: place it on the terrain below. The usual
+          terrain and the examples stay the default.
+        </p>
+        <div id="dem-source" class="dem-source">
+          <button id="dem-qa" type="button" class="primary">Choose the block in QuickerAtlas</button>
+          <button id="dem-file-button" type="button">Open a .bs3dterrain file…</button>
+          <input id="dem-file" type="file" accept=".bs3dterrain,.json,application/json" hidden />
+        </div>
+        <p id="dem-status" class="dem-status" role="status" aria-live="polite" hidden></p>
+        <div id="dem-place" hidden>
+          <div class="dem-stage">
+            <canvas id="dem-map" width="640" height="420" aria-label="Terrain preview with the bridge footprint. Drag the footprint to move it, the round handle to turn it."></canvas>
+            <div id="dem-readout" class="dem-readout"></div>
+          </div>
+          <canvas id="dem-profile" width="640" height="110" aria-label="Ground profile along the bridge"></canvas>
+          <div class="dem-fields">
+            <label
+              >Rotation (° from north)<input id="dem-azimuth" type="number" step="any" inputmode="decimal"
+            /></label>
+            <label
+              >Move east (m)<input id="dem-cx" type="number" step="any" inputmode="decimal"
+            /></label>
+            <label
+              >Move north (m)<input id="dem-cy" type="number" step="any" inputmode="decimal"
+            /></label>
+            <label
+              >Vertical offset (m)<span class="dem-offset"
+                ><input id="dem-zoffset" type="number" step="any" inputmode="decimal" /><button
+                  id="dem-auto"
+                  type="button"
+                  title="The road profile meets the ground at both abutments"
+                  aria-pressed="true"
+                >Auto</button></span
+              ></label
+            >
+          </div>
+          <p class="hint" id="dem-info"></p>
+        </div>
+        <p class="hint">
+          The imported terrain belongs to this browser session only: it is not part of the shared link or the saved
+          .json file, and it is kept here until you remove it.
+        </p>
+        <div class="dialog-actions">
+          <button id="dem-remove" type="button" hidden>Remove imported terrain</button>
+          <button value="close">Cancel</button>
+          <button id="dem-apply" class="primary" type="button" disabled>Import</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="about">
       <form method="dialog">
         <button class="close-dialog" aria-label="Close">×</button
@@ -1077,6 +1146,14 @@
           Starfield and grass species adapted from CK42BB/procedural-stars-threejs and procedural-grass-threejs (MIT);
           atmosphere after Hillaire 2020 (sebh/UnrealEngineSkyAtmosphere, MIT) and Bruneton 2008 (BSD); Preetham sky
           after Tw1ddle/Sky-Shader and the three.js Sky object (MIT); river details after Noniv/web-ocean (MIT).
+        </p>
+        <h3>Version 0.6.8</h3>
+        <p>
+          Import DTM/DSM: pick a block on the satellite map in QuickerAtlas (LiDAR 1 m from NRCan, water, forest and road
+          zones you can edit, the bridge axis) and place the bridge on the real terrain, with its fills, cones and
+          footings on the ground. Truss footbridges: trusses outside the curbs so the approach curbs run straight on,
+          bearings on wider caps and seats, hollow rounded tubes. Complete IFC export: curbs, railings, approaches,
+          markings, street lights and bolts, one clean solid per member.
         </p>
         <h3>Version 0.6.7</h3>
         <p>

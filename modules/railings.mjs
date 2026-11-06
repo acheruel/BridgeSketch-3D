@@ -35,6 +35,13 @@ function strut(parent, mat, a, b, t, w, d) {
   parent.add(mesh);
   return mesh;
 }
+// 0.6.8: every railing member carries a name (« Railing rail », « Wheel curb »…): the IFC export classifies by name
+// and groups the parts of one railing run.
+const named = (parent, mesh, name) => {
+  mesh.name = name;
+  parent.add(mesh);
+  return mesh;
+};
 // Clockwise octagon (u, y) for round tubes.
 const tube = (u, y, r) => Array.from({ length: 8 }, (_, k) => [u + r * Math.cos((-k * Math.PI) / 4), y + r * Math.sin((-k * Math.PI) / 4)]);
 import { CURB_HEIGHT, RAIL_311A, barrierHeight, barrierTopCentre, wheelCurb } from './deck-profiles.mjs';
@@ -66,7 +73,7 @@ function bridgeRailing(parent, m, c, a, b, edge, side, type, baseOffset = null, 
     height = type === '210A' ? 0.87 : 1.4,
     curb = wheelCurb(edge, side, c.asphalt);
   baseOffset ??= 0;
-  if (!onSidewalk) parent.add(sweep(c, a, b, chamferSection(curb), m.edge, (_, q) => surface(c, q)));
+  if (!onSidewalk) named(parent, sweep(c, a, b, chamferSection(curb), m.edge, (_, q) => surface(c, q)), 'Wheel curb');
   if (type === 'SDC') {
     architecturalRailing(parent, m, c, a, b, edge, side, baseOffset + curbTop, run);
     return;
@@ -81,7 +88,7 @@ function bridgeRailing(parent, m, c, a, b, edge, side, type, baseOffset = null, 
       rect(u - w / 2, u - w / 2 + t, top - t, bottom + t),
       rect(u + w / 2 - t, u + w / 2, top - t, bottom + t),
     ])
-      parent.add(sweep(c, a, b, section, m.railing, (_, q) => profile(c, q) + baseOffset));
+      named(parent, sweep(c, a, b, section, m.railing, (_, q) => profile(c, q) + baseOffset), 'Railing rail');
   };
   if (type === '20C') {
     rail(0.08, 0.08, 0.05);
@@ -96,15 +103,15 @@ function bridgeRailing(parent, m, c, a, b, edge, side, type, baseOffset = null, 
       p = frame(c, s, u),
       y = profile(c, s) + crossAt(c, u) + baseOffset + curbTop,
       angle = -Math.atan2(p.tz, p.tx);
-    box(parent, m.railing, p.x, y + height / 2, p.z, 0.09, height, 0.09, angle);
-    box(parent, m.dark, p.x, y + 0.02, p.z, 0.15, 0.035, 0.15, angle);
+    box(parent, m.railing, p.x, y + height / 2, p.z, 0.09, height, 0.09, angle).name = 'Railing post';
+    box(parent, m.dark, p.x, y + 0.02, p.z, 0.15, 0.035, 0.15, angle).name = 'Railing base plate';
   }
   if (type === '20C')
     for (let q = a + 0.1; q < b - 0.05; q += 0.1) {
       const s = supportStation(c, q, u),
         p = frame(c, s, u),
         angle = -Math.atan2(p.tz, p.tx);
-      box(parent, m.railing, p.x, profile(c, s) + crossAt(c, u) + baseOffset + curbTop + 0.73, p.z, 0.018, 1.31, 0.018, angle);
+      box(parent, m.railing, p.x, profile(c, s) + crossAt(c, u) + baseOffset + curbTop + 0.73, p.z, 0.018, 1.31, 0.018, angle).name = 'Railing picket';
     }
 }
 
@@ -132,20 +139,20 @@ export function roadsideGuardrail(parent, m, c, a, b, u, road) {
   const group = new T.Group(),
     section = guardrailSection.map(([x, y]) => [u + side * x, y]);
   if (side < 0) section.reverse();
-  group.add(sweep(local, a, b, section, m.guardrail));
+  named(group, sweep(local, a, b, section, m.guardrail), 'W-beam rail');
   const count = Math.max(1, Math.ceil((b - a) / 1.9));
   for (let j = 0; j <= count; j++) {
     const q = a + ((b - a) * j) / count,
       p = path(q, side * 0.14);
-    box(group, m.guardrail, p.x, p.y + 0.38, p.z, 0.1, 0.92, 0.13, p.angle);
+    box(group, m.guardrail, p.x, p.y + 0.38, p.z, 0.1, 0.92, 0.13, p.angle).name = 'W-beam post';
     const block = path(q, side * 0.07);
-    box(group, m.dark, block.x, block.y + 0.68, block.z, 0.12, 0.2, 0.12, block.angle);
+    box(group, m.dark, block.x, block.y + 0.68, block.z, 0.12, 0.2, 0.12, block.angle).name = 'W-beam block';
     const bolt = path(q, -side * 0.045);
-    box(group, m.railing, bolt.x, bolt.y + 0.68, bolt.z, 0.03, 0.025, 0.025, bolt.angle);
+    box(group, m.railing, bolt.x, bolt.y + 0.68, bolt.z, 0.03, 0.025, 0.025, bolt.angle).name = 'W-beam bolt';
   }
   for (const q of [a, b]) {
     const p = path(q);
-    box(group, m.guardrail, p.x, p.y + 0.68, p.z, 0.22, 0.34, 0.12, p.angle);
+    box(group, m.guardrail, p.x, p.y + 0.68, p.z, 0.22, 0.34, 0.12, p.angle).name = 'W-beam terminal';
   }
   if (road) {
     group.position.set(road.x, 0, road.z);
@@ -171,15 +178,15 @@ export function barrierRail(parent, m, c, a, b, edge, side, base, run = {}) {
     rect(u - r.width / 2, u - r.width / 2 + t, railTop - t, railTop - r.depth + t),
     rect(u + r.width / 2 - t, u + r.width / 2, railTop - t, railTop - r.depth + t),
   ])
-    parent.add(sweep(c, a, b, section, m.railing));
+    named(parent, sweep(c, a, b, section, m.railing), 'Barrier rail');
   for (const q of postStations(a + 0.3, b - 0.3, r.spacing, run)) {
     const s = supportStation(c, q, u),
       p = frame(c, s, u),
       y = profile(c, s) + crossAt(c, u),
       angle = -Math.atan2(p.tz, p.tx),
       postHeight = r.rise - r.depth;
-    box(parent, m.railing, p.x, y + top + postHeight / 2, p.z, r.post, postHeight, 0.1, angle);
-    box(parent, m.dark, p.x, y + top + 0.012, p.z, 0.3, 0.025, 0.24, angle);
+    box(parent, m.railing, p.x, y + top + postHeight / 2, p.z, r.post, postHeight, 0.1, angle).name = 'Barrier rail post';
+    box(parent, m.dark, p.x, y + top + 0.012, p.z, 0.3, 0.025, 0.24, angle).name = 'Barrier rail base plate';
   }
 }
 
@@ -197,9 +204,9 @@ export function architecturalRailing(parent, m, c, a, b, edge, side, base, run =
     [SDC.handrail, 0.05],
     [0.14, 0.04],
   ])
-    parent.add(sweep(c, a, b, tube(at(h), h, r), mat, surface, undefined, u0));
+    named(parent, sweep(c, a, b, tube(at(h), h, r), mat, surface, undefined, u0), 'Railing rail');
   // Handrail on the inner face for cyclists and pedestrians.
-  parent.add(sweep(c, a, b, tube(at(SDC.handrail) - side * 0.09, SDC.handrail, 0.03), mat, surface, undefined, u0));
+  named(parent, sweep(c, a, b, tube(at(SDC.handrail) - side * 0.09, SDC.handrail, 0.03), mat, surface, undefined, u0), 'Railing rail');
   const point = (q, h) => {
     const uu = at(h),
       s = supportStation(c, q, uu),
@@ -209,8 +216,8 @@ export function architecturalRailing(parent, m, c, a, b, edge, side, base, run =
   const posts = postStations(a, b, SDC.spacing, run);
   for (const q of posts) {
     const f = frame(c, supportStation(c, q, u0), u0);
-    strut(parent, mat, point(q, 0), point(q, SDC.height - 0.1), [f.tx, f.tz], 0.035, 0.2);
-    box(parent, m.dark, ...point(q, 0.015), 0.28, 0.03, 0.28, -Math.atan2(f.tz, f.tx));
+    strut(parent, mat, point(q, 0), point(q, SDC.height - 0.1), [f.tx, f.tz], 0.035, 0.2).name = 'Railing post';
+    box(parent, m.dark, ...point(q, 0.015), 0.28, 0.03, 0.28, -Math.atan2(f.tz, f.tx)).name = 'Railing base plate';
   }
   // Include the neighbouring grid posts when this mesh covers only part of a bay (span joints).
   const origin = run.origin ?? a;

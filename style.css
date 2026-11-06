@@ -2019,3 +2019,123 @@ body.sketchy-game #canvasHost {
   min-width: 0;
   font-size: 0.8rem;
 }
+/* 0.6.8 · terrain import (DTM / DSM from QuickerAtlas). */
+.dem-bar {
+  padding: 0 16px 12px;
+  margin-top: -4px;
+}
+#dem-open {
+  width: 100%;
+  justify-content: center;
+  white-space: nowrap;
+}
+#dem-open.active {
+  border-color: var(--teal);
+  background: #eefaf6;
+  color: var(--teal-ink);
+}
+#dem-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+}
+#dem-dialog h2 {
+  margin-top: 0;
+}
+.dem-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 6px;
+}
+.dem-status {
+  margin: 6px 0;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: var(--mint-soft);
+  color: var(--teal-ink);
+  font-size: 0.82rem;
+}
+.dem-status.error {
+  background: var(--err-bg);
+  color: var(--err-ink);
+  border: 1px solid var(--err-line);
+}
+.dem-stage {
+  position: relative;
+}
+#dem-map {
+  display: block;
+  width: 100%;
+  aspect-ratio: 640 / 340;
+  border-radius: 8px;
+  background: #26323a;
+  touch-action: none;
+  cursor: grab;
+}
+#dem-dialog .dialog-actions {
+  position: sticky;
+  bottom: 0;
+  margin: 12px -26px -26px;
+  padding: 12px 26px;
+  background: var(--paper);
+  border-top: 1px solid var(--line);
+}
+#dem-profile {
+  display: block;
+  width: 100%;
+  height: 84px;
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.dem-readout {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: #102d41cc;
+  color: #fff;
+  font-size: 0.72rem;
+  pointer-events: none;
+  width: fit-content;
+  max-width: calc(100% - 16px);
+}
+.dem-readout:empty {
+  display: none;
+}
+.dem-readout.warn {
+  background: #a33329dd;
+}
+.dem-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.dem-fields label {
+  display: grid;
+  gap: 3px;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.dem-offset {
+  display: flex;
+  gap: 4px;
+}
+.dem-offset input {
+  min-width: 0;
+  flex: 1;
+}
+#dem-auto.on {
+  border-color: var(--teal);
+  background: #eefaf6;
+  color: var(--teal-ink);
+}
+@media (max-width: 760px) {
+  #dem-dialog form {
+    padding: 16px;
+  }
+}

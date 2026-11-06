@@ -12,9 +12,8 @@ import {
   stations,
   supportStation,
   TRUSS_DEPTH,
-  TRUSS_OVER,
+  trussAxis,
   trussChord,
-  trussInset,
 } from './geometry.mjs';
 import { beam, box, rect, skewPlate, soffitAt, supportPoint, sweep } from './sections.mjs';
 
@@ -404,12 +403,153 @@ function iBeam(parent, mat, p, q, depth, flange, name, tf = 0.018, tw = 0.01) {
   parent.add(g);
   return g;
 }
+// ─── Hollow structural sections (0.6.8) ───────────────────────────────────────────────────────────────────────
+// Rectangular / square tubes with rounded outer corners (radius 2.5 × wall, EN 10219 style) and a real hole: an
+// outer skin, an inner skin and either a flat end plate (capped end) or the annular wall face (open end, hidden
+// inside a joint). 3 segments per corner keep a member at about 130 triangles.
+const HSS_SEG = 3;
+// Wall thickness for a tube of this smaller outer dimension: 10 to 16 mm on the main members.
+export const hssWall = size => Math.min(0.016, Math.max(0.006, size * 0.06));
+// Counter-clockwise rounded rectangle w × h with corner radius r: 4 corners of seg + 1 points each.
+export function hssLoop(w, h, r, seg = HSS_SEG) {
+  const pts = [];
+  for (const [cx, cy, a0] of [
+    [w / 2 - r, h / 2 - r, 0],
+    [-(w / 2 - r), h / 2 - r, 1],
+    [-(w / 2 - r), -(h / 2 - r), 2],
+    [w / 2 - r, -(h / 2 - r), 3],
+  ])
+    for (let k = 0; k <= seg; k++) {
+      const a = (Math.PI / 2) * (a0 + k / seg);
+      pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+    }
+  return pts;
+}
+// Outer and inner loops of a tube w × d: { outer, inner } in the section plane.
+function hssLoops(w, d) {
+  const size = Math.min(w, d),
+    t = Math.min(hssWall(size), size / 4),
+    r = Math.min(2.5 * t, size / 2 - t - 0.002);
+  return { t, outer: hssLoop(w, d, r), inner: hssLoop(w - 2 * t, d - 2 * t, r - t) };
+}
+// Tube mesh from matching lists of rings (ring j, point k → [x, y, z]); caps = [start, end]: true closes that end
+// with a plate, false leaves the open wall face.
+function hssMesh(outer, inner, mat, caps) {
+  const pos = [],
+    uv = [],
+    idx = [],
+    J = outer.length,
+    n = outer[0].length,
+    seg = n / 4 - 1,
+    sub = (p, q) => [p[0] - q[0], p[1] - q[1], p[2] - q[2]],
+    cross = (p, q) => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]],
+    dot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2],
+    mid = ring => ring.reduce((a, p) => [a[0] + p[0] / ring.length, a[1] + p[1] / ring.length, a[2] + p[2] / ring.length], [0, 0, 0]),
+    centres = outer.map(mid),
+    along = [0];
+  for (let j = 1; j < J; j++) along.push(along[j - 1] + Math.hypot(...sub(centres[j], centres[j - 1])));
+  // Winding of the outer skin: the first quad's normal must point away from the axis; the inner skin is reversed.
+  const n0 = cross(sub(outer[0][1], outer[0][0]), sub(outer[1][1], outer[0][0])),
+    flipOuter = dot(n0, sub(outer[0][0], centres[0])) < 0;
+  // Smooth shading inside each rounded corner, crisp edges where a flat meets a corner (separate vertex strips).
+  const runs = [];
+  for (let i = 0; i < 4; i++) {
+    runs.push(Array.from({ length: seg + 1 }, (_, k) => i * (seg + 1) + k));
+    runs.push([i * (seg + 1) + seg, ((i + 1) % 4) * (seg + 1)]);
+  }
+  const strips = (rings, flip) => {
+    for (const ids of runs) {
+      const base = pos.length / 3,
+        m = ids.length;
+      for (let j = 0; j < J; j++)
+        for (const k of ids) {
+          pos.push(...rings[j][k]);
+          uv.push(along[j] / 4, k / 4);
+        }
+      for (let j = 0; j < J - 1; j++)
+        for (let q = 0; q < m - 1; q++) {
+          const a = base + j * m + q,
+            b = a + 1,
+            c2 = a + m + 1,
+            d = a + m;
+          idx.push(...(flip ? [a, c2, b, a, d, c2] : [a, b, c2, a, c2, d]));
+        }
+    }
+  };
+  strips(outer, flipOuter);
+  strips(inner, !flipOuter);
+  [0, J - 1].forEach((j, e) => {
+    const out = e === 0 ? sub(centres[0], centres[1]) : sub(centres[J - 1], centres[J - 2]),
+      base = pos.length / 3;
+    if (caps[e]) {
+      // End plate: a fan from the centre of the outer ring.
+      pos.push(...centres[j], ...outer[j].flat());
+      for (let k = 0; k < 1 + n; k++) uv.push(0, 0);
+      const flip = dot(cross(sub(outer[j][0], centres[j]), sub(outer[j][1], centres[j])), out) < 0;
+      for (let k = 0; k < n; k++) idx.push(base, ...(flip ? [base + 1 + ((k + 1) % n), base + 1 + k] : [base + 1 + k, base + 1 + ((k + 1) % n)]));
+    } else {
+      // Open end: the wall face between the outer and the inner loop.
+      pos.push(...outer[j].flat(), ...inner[j].flat());
+      for (let k = 0; k < 2 * n; k++) uv.push(0, 0);
+      const flip = dot(cross(sub(outer[j][1], outer[j][0]), sub(inner[j][1], outer[j][0])), out) < 0;
+      for (let k = 0; k < n; k++) {
+        const a = base + k,
+          b = base + ((k + 1) % n),
+          c2 = base + n + ((k + 1) % n),
+          d = base + n + k;
+        idx.push(...(flip ? [a, c2, b, a, d, c2] : [a, b, c2, a, c2, d]));
+      }
+    }
+  });
+  const g = new T.BufferGeometry();
+  g.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  const mesh = new T.Mesh(g, mat);
+  mesh.castShadow = mesh.receiveShadow = true;
+  return mesh;
+}
+// Straight tube between two points: section w across x of the member frame and d across z (the frame of beam():
+// the shortest rotation from +Y to the axis), so inclined members keep the orientation of the boxes they replace.
+export function hssBar(parent, mat, p, q, w, d, name, caps = [true, true]) {
+  const a = new T.Vector3(...p),
+    b = new T.Vector3(...q),
+    axis = b.clone().sub(a).normalize(),
+    rot = new T.Quaternion().setFromUnitVectors(new T.Vector3(0, 1, 0), axis),
+    ex = new T.Vector3(1, 0, 0).applyQuaternion(rot),
+    ez = new T.Vector3(0, 0, 1).applyQuaternion(rot),
+    { outer, inner } = hssLoops(w, d);
+  const ring = (loop, o) => loop.map(([x, y]) => [o.x + ex.x * x + ez.x * y, o.y + ex.y * x + ez.y * y, o.z + ex.z * x + ez.z * y]);
+  const mesh = hssMesh([a, b].map(o => ring(outer, o)), [a, b].map(o => ring(inner, o)), mat, caps);
+  mesh.name = name;
+  parent.add(mesh);
+  return mesh;
+}
+// Square tube swept along the alignment (follows the curve, the profile and the crossfall like sweep()): the section
+// is centred on the line u, w across and h high about the level axisAt(s).
+export function hssSweep(c, a, b, u, w, h, mat, axisAt, name, caps = [true, true]) {
+  const steps = Math.max(1, Math.ceil((b - a) / (c.curved ? 1.5 : 3))),
+    { outer, inner } = hssLoops(w, h),
+    rise = crossAt(c, u);
+  const ring = (loop, station) =>
+    loop.map(([lu, lv]) => {
+      const s = supportStation(c, station, u + lu),
+        f = frame(c, s, u + lu);
+      return [f.x, axisAt(s) + lv + rise, f.z];
+    });
+  const stationsAlong = Array.from({ length: steps + 1 }, (_, j) => a + ((b - a) * j) / steps);
+  const mesh = hssMesh(stationsAlong.map(s => ring(outer, s)), stationsAlong.map(s => ring(inner, s)), mat, caps);
+  mesh.name = name;
+  return mesh;
+}
+
 // ─── Steel trusses for footbridges (0.6.6) ────────────────────────────────────────────────────────────────
 // Two trusses with the deck at their bottom chords: a pony truss (low, open top, outrigger knee braces) or a through
 // truss (top struts and X bracing over the path, portal struts at the ends). Warren, Pratt or Howe web; every
 // truss ends with an inclined end post (a diagonal) down to its bearing. Simple spans, or one truss continuous over
 // the piers. Floor beams (traverses) under the slab and the top struts follow the chosen spacing.
-export { TRUSS_OVER, TRUSS_DEPTH, trussChord, trussInset };
+export { TRUSS_DEPTH, trussAxis, trussChord };
 
 // Bearing-to-bearing node stations (centre-line basis) of each truss run; an even panel count in every span.
 export function trussRuns(c) {
@@ -425,9 +565,9 @@ export function trussRuns(c) {
 }
 
 export function addTruss(c, m, structure) {
+  // 0.6.8: the truss lines stand outside the curbs (trussAxis); every member is a hollow rounded tube (hssBar).
   const group = new T.Group(),
-    half = c.width / 2,
-    tu = half - TRUSS_OVER,
+    tu = trussAxis(c),
     cw = trussChord(c),
     member = c.trussType === 'through' ? 0.24 : 0.2,
     H = c.trussHeight,
@@ -445,10 +585,6 @@ export function addTruss(c, m, structure) {
       const s = supportStation(c, x, u);
       return profile(c, s) - c.asphalt - c.deck + crossAt(c, u);
     };
-  const add = (mesh, name) => {
-    mesh.name = name;
-    return mesh;
-  };
   for (const run of trussRuns(c)) {
     const all = run.spans.flatMap((nodes, i) => (i ? nodes.slice(1) : nodes)),
       first = all[0],
@@ -457,17 +593,13 @@ export function addTruss(c, m, structure) {
       topEnd = run.spans.at(-1).at(-2);
     for (const side of [-1, 1]) {
       const u = side * tu;
-      // Chords: square hollow sections swept along the alignment (they follow the curve and the profile).
+      // Chords: square hollow sections swept along the alignment (they follow the curve and the profile), end plates.
       const chord = (a, b, rise, name) =>
-        group.add(
-          add(
-            sweep(c, a, b, rect(u - cw / 2, u + cw / 2, cw / 2, -cw / 2), m.steel, (_, s) => chordAxis(s, u) + rise, undefined, u),
-            name,
-          ),
-        );
+        group.add(hssSweep(c, a, b, u, cw, cw, m.steel, s => chordAxis(s, u) + rise, name));
       chord(first - 0.15, lastNode + 0.15, 0, 'Truss bottom chord');
       chord(topStart, topEnd, H, 'Truss top chord');
-      const bar = (p, q, w, name) => add(beam(group, m.steel, p, q, w, w), name);
+      // Diagonals and posts end inside the chords: open wall faces there, a plate on the end post's foot.
+      const bar = (p, q, w, name, caps = [false, false]) => hssBar(group, m.steel, p, q, w, w, name, caps);
       run.spans.forEach((nodes, i) => {
         const n = nodes.length - 1,
           B = k => node(nodes[k], u),
@@ -483,7 +615,7 @@ export function addTruss(c, m, structure) {
           // End posts: an inclined chord-size member from the bearing node to the first top node.
           const endPost = (k === 0 && endA) || (k === n - 1 && endB);
           if (endPost) [from, to] = k === 0 ? [B(0), Tn(1)] : [Tn(n - 1), B(n)];
-          bar(from, to, endPost ? cw : member, endPost ? 'Truss end post' : 'Truss diagonal');
+          bar(from, to, endPost ? cw : member, endPost ? 'Truss end post' : 'Truss diagonal', [endPost && k === 0, endPost && k !== 0]);
         }
         // Verticals (posts): every interior node for Pratt and Howe, the top nodes of a Warren; over continuous piers.
         for (let k = 0; k <= n; k++) {
@@ -518,12 +650,12 @@ export function addTruss(c, m, structure) {
         const portal = k === 0 || k === picked.length - 1,
           p = node(x, -tu, H),
           q = node(x, tu, H);
-        add(beam(group, m.steel, p, q, portal ? 0.3 : 0.2, portal ? 0.55 : 0.25), portal ? 'Portal strut' : 'Top strut');
+        hssBar(group, m.steel, p, q, portal ? 0.3 : 0.2, portal ? 0.55 : 0.25, portal ? 'Portal strut' : 'Top strut');
         if (k > 0) {
           const r = node(picked[k - 1], -tu, H),
             t = node(picked[k - 1], tu, H);
-          add(beam(group, m.steel, r, q, 0.07, 0.07), 'Top lateral bracing');
-          add(beam(group, m.steel, t, p, 0.07, 0.07), 'Top lateral bracing');
+          hssBar(group, m.steel, r, q, 0.07, 0.07, 'Top lateral bracing');
+          hssBar(group, m.steel, t, p, 0.07, 0.07, 'Top lateral bracing');
         }
       });
     }
