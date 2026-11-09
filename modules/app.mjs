@@ -69,6 +69,11 @@ import { cloudShadow, concreteFinishes } from './materials.mjs';
 import { renderSettings, effectiveQuality, setGpuName, stepDownAuto, gpuInfo } from './quality.mjs';
 import { createHistory } from './history.mjs';
 import { createDemImport, saveOverlay, loadOverlay, clearOverlay } from './dem-ui.mjs';
+import { siteSun, packetToScene } from './terrain-packet.mjs';
+import { roadFootprints, intersectsRoad, setActiveDem, setTwinZone } from './terrain.mjs';
+import { setGroundPartner } from './dem.mjs';
+import { twinConfig, twinPlacement, twinToA, aToTwin } from './twin.mjs';
+import { createTwinPanel } from './twin-ui.mjs';
 import {
   isNum,
   numValue,
@@ -98,6 +103,7 @@ let config = makePreset(presets[0].id),
   // 0.6.8: imported terrain (DTM / DSM from QuickerAtlas), a session overlay: { packet, placement, texture } or null.
   // Not part of the config, the share link or the saved .json; IndexedDB keeps it across reloads (dem-ui.mjs).
   demOverlay = null,
+  twinPanel = null,
   sky,
   skyTime = 0,
   view = 'perspective',
@@ -135,7 +141,22 @@ let timeAppliedAt = 0,
 const tier = () => renderSettings[effectiveQuality(config.renderQuality)];
 let post = null;
 // Every visible frame goes through the bloom chain unless the tier or the Glow option turns it off.
-const draw = () => post.render(scene, camera, { strength: config.bloom ? tier().bloom : 0 });
+// 0.6.9: geographic north projected into the camera, independent of the bridge heading.
+const northBadge = document.createElement('div');
+northBadge.id = 'site-north';
+northBadge.innerHTML = '<span>↑</span>North · artistic sun path';
+northBadge.hidden = true;
+const northVector = new T.Vector3();
+const draw = () => {
+  if (renderer && !northBadge.parentNode) renderer.domElement.parentNode.appendChild(northBadge);
+  northBadge.hidden = !demOverlay;
+  if (demOverlay) {
+    const [x, z] = packetToScene({ ...demOverlay.placement, cx: 0, cy: 0 }, 0, 1);
+    northVector.set(x, 0, z).transformDirection(camera.matrixWorldInverse);
+    northBadge.firstElementChild.style.transform = `rotate(${Math.atan2(northVector.x, northVector.y)}rad)`;
+  }
+  post.render(scene, camera, { strength: config.bloom ? tier().bloom : 0 });
+};
 // Frame statistics for the Stats overlay and the Auto quality: loop rate, CPU time and GPU time (timer query).
 const perf = { frames: 0, since: 0, fps: 0, cpu: 0, gpu: null, lowSince: null, query: null, ext: null };
 function notify(message, error = false) {
@@ -587,15 +608,15 @@ function applyTimeOfDay(hour, flowing = false) {
   if (!scene?.userData.lights) return;
   // Sun from 06:30 to 19:30 (autumn day). Daylight follows the sun elevation, so the evening only gets darker:
   // golden hour when the sun is low (about 18:30–19:30, peak 19:05), then blue hour, then night from 20:00.
-  const angle = ((hour - 6.5) * Math.PI) / 13,
-    elevation = Math.sin(angle),
+  const solar = siteSun(hour, demOverlay?.placement),
+    elevation = solar.elevation,
     daylight = T.MathUtils.smoothstep(elevation, -0.14, 0.22);
   const golden = Math.exp(-(((elevation - 0.1) / 0.12) ** 2)) * T.MathUtils.smoothstep(elevation, -0.13, 0);
   scene.userData.daylight = daylight;
   const tint = (night, day, gold) =>
     new T.Color(night).lerp(new T.Color(day), daylight).lerp(new T.Color(gold), golden);
   const { hemi, sun, fill, rim } = scene.userData.lights;
-  sun.position.set(Math.cos(angle) * 80, 8 + 60 * Math.max(0, Math.sin(angle)), 40);
+  sun.position.set(solar.x, solar.lightY, solar.z);
   // Flowing time moves the sun by a few hundredths of a degree per step: its shadows are refreshed every 2 s.
   if (flowing) shadowFlow = true;
   else shadowDirty = true;
@@ -611,7 +632,7 @@ function applyTimeOfDay(hour, flowing = false) {
   fill.color.copy(tint('#7293bf', '#c8ddfa', '#ffcfab'));
   fill.intensity = 0.3 + 0.95 * daylight - 0.4 * golden;
   rim.intensity = 0.15 + 0.55 * daylight + 0.15 * golden;
-  sky?.update(daylight, golden, sun, new T.Vector3(Math.cos(angle) * 80, 80 * elevation, 40));
+  sky?.update(daylight, golden, sun, new T.Vector3(solar.x, solar.skyY, solar.z));
   if (materials?.water) {
     const w = materials.water.userData.water,
       sunDirection = sun.position.clone().normalize();
@@ -1093,6 +1114,24 @@ function renderElevationDims() {
   svg.innerHTML = out;
 }
 let updateQueue = Promise.resolve();
+// 0.6.9: renderer.compileAsync, except that a material disposed while its shader compiles (an overlapping rebuild, e.g.
+// right after a terrain import) is skipped instead of throwing « reading 'isReady' » from three.js's polling timer.
+function compileScene() {
+  const pending = renderer.compile(scene, camera),
+    parallel = renderer.extensions.get('KHR_parallel_shader_compile') !== null;
+  return new Promise(resolve => {
+    const check = () => {
+      pending.forEach(m => {
+        const program = renderer.properties.get(m).currentProgram;
+        if (!program || program.isReady()) pending.delete(m);
+      });
+      if (pending.size) setTimeout(check, 10);
+      else resolve();
+    };
+    if (parallel) check();
+    else setTimeout(check, 10);
+  });
+}
 function update(raw, options = {}) {
   const next = validate(raw);
   // Parameter edits rebuild immediately; only a new model (boot, concept, link, file) shows the loading logo and
@@ -1112,7 +1151,7 @@ function update(raw, options = {}) {
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     try {
       rebuild(next, options);
-      await renderer.compileAsync(scene, camera);
+      await compileScene();
       renderReflection();
       draw();
     } finally {
@@ -1122,11 +1161,49 @@ function update(raw, options = {}) {
   });
   return updateQueue;
 }
+// 0.6.9: bridge B (config.twin) on the imported site. B is built first, without a site of its own: its footprint then
+// keeps A's imported roads, trees and grass off its deck and approaches, and both grounds carry both approach cuts.
+function buildPair(next) {
+  const t = next.twin,
+    cB = t && demOverlay ? twinConfig(next) : null;
+  setTwinZone(null);
+  if (!cB) return buildBridge(next, materials, { dem: demOverlay });
+  const demB = { packet: demOverlay.packet, placement: twinPlacement(demOverlay.placement, t) };
+  setGroundPartner(next, { c: cB, dem: demB, to: (x, z) => aToTwin(t, x, z) });
+  setGroundPartner(cB, { c: next, dem: demOverlay, to: (x, z) => twinToA(t, x, z) });
+  let b = null, a;
+  try {
+    b = buildBridge(cB, materials, { site: false, lights: true, fills: true, dem: demB });
+    const zones = roadFootprints(cB);
+    setTwinZone((x, z, margin = 0) => {
+      const [u, v] = aToTwin(t, x, z);
+      return intersectsRoad(zones, u, v, margin);
+    });
+    a = buildBridge(next, materials, { dem: demOverlay });
+  } catch (e) {
+    if (b) disposeModel(b);
+    setTwinZone(null);
+    setActiveDem(demOverlay);
+    throw e;
+  }
+  b.root.name = 'Bridge B';
+  b.root.position.set(t.shift, 0, t.spacing);
+  b.root.rotation.y = (-t.turn * Math.PI) / 180;
+  a.root.add(b.root);
+  a.vehicles.push(...b.vehicles);
+  const la = a.lighting, lb = b.lighting;
+  if (lb)
+    a.lighting = la
+      ? { ...la, setOn: on => (la.setOn(on), lb.setOn(on)), setHidden: h => (la.setHidden?.(h), lb.setHidden?.(h)), dispose: () => (la.dispose(), lb.dispose()) }
+      : lb;
+  a.twin = b;
+  return a;
+}
 function rebuild(raw, { resetCamera = false, refresh = false, noHistory = false, editKey = null, baseline = false } = {}) {
   stopDriving();
   const next = validate(raw),
     started = performance.now(),
-    replacement = buildBridge(next, materials, { dem: demOverlay });
+    replacement = buildPair(next);
   if (model) {
     scene.remove(model.root);
     disposeModel(model);
@@ -1168,6 +1245,7 @@ function rebuild(raw, { resetCamera = false, refresh = false, noHistory = false,
     syncEnabled();
     syncWaterFields();
   }
+  twinPanel?.refresh();
   if (view === 'section') renderSection();
   const L = totalLength(config);
   $('length').innerHTML = `${L.toFixed(1)} <small>m</small>`;
@@ -1600,6 +1678,7 @@ async function boot() {
     if (saved && ['cx', 'cy', 'azimuth', 'zOffset'].every(k => Number.isFinite(saved.placement?.[k]))) {
       demOverlay = { packet: saved.packet, placement: saved.placement, texture: await demTexture(saved.packet) };
       demImport.refreshButton();
+      $('save-project').disabled = false;
     }
   } catch (e) {
     console.warn('Imported terrain not restored:', e);
@@ -1625,7 +1704,7 @@ async function boot() {
   envDirty = false;
   intro?.progress(0.78, 'Compiling shaders\u2026');
   try {
-    await renderer.compileAsync(scene, camera);
+    await compileScene();
   } catch (e) {
     console.warn(e);
   }
@@ -2118,6 +2197,37 @@ $('save').onclick = () => {
   hist.markSaved();
   notify(`Saved ${fileBase()}.json`);
 };
+// 0.6.9: complete project: configuration (bridge A and B), camera, imported terrain packet (grids, image, edited
+// zones, attribution) and its placement. The .json configuration and the shared link stay light and site-free.
+$('save-project').onclick = async () => {
+  if (!demOverlay) return notify('Import a terrain first: the complete project carries the imported site.', true);
+  const { serializePacket } = await import('./terrain-packet.mjs'),
+    saved = {
+      format: 'bs3d-project',
+      formatVersion: 1,
+      release: { ...release, savedAt: new Date().toISOString() },
+      name: config.name,
+      config,
+      camera: captureCamera(),
+      placement: { ...demOverlay.placement },
+      terrain: JSON.parse(serializePacket(demOverlay.packet)),
+    },
+    blob = new Blob([JSON.stringify(saved)], { type: 'application/json' });
+  download(blob, fileBase() + '.bs3dproject');
+  hist.markSaved();
+  notify(`Saved ${fileBase()}.bs3dproject (${(blob.size / 1048576).toFixed(1)} MB). Open it from File › Open.`);
+};
+async function openProject(data) {
+  const { validatePacket } = await import('./terrain-packet.mjs'),
+    packet = validatePacket(data.terrain),
+    pl = data.placement;
+  if (!pl || !['cx', 'cy', 'azimuth', 'zOffset'].every(k => Number.isFinite(pl[k]))) throw Error('This project has no valid bridge placement.');
+  const next = validate({ ...data.config, name: data.config?.name ?? data.name ?? '' });
+  await setDem({ packet, placement: { cx: pl.cx, cy: pl.cy, azimuth: pl.azimuth, zOffset: pl.zOffset }, config: next });
+  hist.track({ baseline: true });
+  restoreCamera(data.camera);
+  notify('Complete project opened: bridges, imported site and zones.');
+}
 $('variantName').addEventListener('input', () => {
   config.name = $('variantName')
     .value.replace(/[\u0000-\u001f]/g, '')
@@ -2136,7 +2246,13 @@ $('file').onchange = async () => {
   try {
     const file = $('file').files[0];
     if (!file) return;
-    if (file.size > 24000) throw Error('Choose a BridgeSketch 3D configuration smaller than 24 KB.');
+    if (/\.bs3dproject$/i.test(file.name) || file.size > 24000) {
+      if (file.size > 200 * 1048576) throw Error('This project is larger than 200 MB.');
+      const project = JSON.parse(await file.text());
+      if (project?.format !== 'bs3d-project') throw Error('Choose a BridgeSketch 3D configuration smaller than 24 KB, or a .bs3dproject file.');
+      await openProject(project);
+      return;
+    }
     const data = JSON.parse(await file.text()),
       saved = {
         config: validate({ ...(data.config ?? data), name: data.config?.name ?? data.name ?? '' }),
@@ -2443,20 +2559,23 @@ async function demTexture(packet) {
 }
 async function setDem(data) {
   const previous = demOverlay,
+    previousConfig = config,
     texture = data ? await demTexture(data.packet) : null;
   demOverlay = data ? { packet: data.packet, placement: data.placement, texture } : null;
   try {
-    await update(config, { refresh: true, resetCamera: true, noHistory: true });
+    await update(data?.config ?? config, { refresh: true, resetCamera: true, noHistory: true });
   } catch (e) {
     texture?.dispose();
     demOverlay = previous;
-    await update(config, { refresh: true, resetCamera: true, noHistory: true }).catch(() => {});
+    await update(previousConfig, { refresh: true, resetCamera: true, noHistory: true }).catch(() => {});
     throw e;
   }
   previous?.texture?.dispose();
   if (data) await saveOverlay({ packet: data.packet, placement: data.placement });
   else await clearOverlay();
   demImport.refreshButton();
+  $('save-project').disabled = !demOverlay;
+  twinPanel?.refresh();
 }
 async function importDem(raw, placement) {
   const { validatePacket, autoPlacement } = await import('./terrain-packet.mjs'),
@@ -2479,6 +2598,8 @@ const demImport = createDemImport({
   remove: removeDem,
   notify,
 });
+twinPanel = createTwinPanel({ $, getConfig: () => config, hasSite: () => !!demOverlay, update, notify });
+twinPanel.refresh();
 // QuickerAtlas can also open this page with #terrain-import and wait for { type: 'bs3d-ready' } before sending.
 const terrainHash = location.hash === '#terrain-import';
 if (terrainHash) {

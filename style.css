@@ -2024,6 +2024,13 @@ body.sketchy-game #canvasHost {
   padding: 0 16px 12px;
   margin-top: -4px;
 }
+/* 0.6.9: site parameters and zone editor, including narrow screens. */
+.dem-section { margin: 12px 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+.dem-section summary { cursor: pointer; font-weight: 700; }
+.dem-fields input, .dem-fields select { width: 100%; min-width: 0; box-sizing: border-box; }
+.dem-source button { white-space: normal; }
+#site-north { position: absolute; left: 12px; bottom: 14px; padding: 7px 10px; border-radius: 8px; background: #102d41dc; color: white; pointer-events: none; z-index: 3; font-size: 12px; }
+#site-north span { display: inline-block; font-size: 22px; margin-right: 7px; }
 #dem-open {
   width: 100%;
   justify-content: center;

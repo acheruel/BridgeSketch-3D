@@ -1,4 +1,5 @@
 import { edgeWidth } from './deck-profiles.mjs';
+import { cleanTwin } from './twin.mjs';
 
 export const defaults = {
   version: 1,
@@ -95,6 +96,8 @@ export const defaults = {
   timeOfDay: 18,
   timeFlow: true,
   seed: 17,
+  // 0.6.9: bridge B on the same imported site (see twin.mjs); null = one bridge.
+  twin: null,
   trainStyle: 'mixed',
   medianType: 'none',
   medianWidth: 1.2,
@@ -685,6 +688,7 @@ export function validate(raw) {
   // Limit end slopes for a readable concept model, without suggesting design compliance.
   if (c.profile === 'crest' && (4 * c.rise) / totalLength(c) > 0.12)
     throw Error('Reduce crest rise for this bridge length.');
+  c.twin = cleanTwin(c.twin, c);
   return c;
 }
 export function frame(c, s, u = 0) {

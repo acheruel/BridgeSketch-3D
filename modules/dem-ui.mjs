@@ -3,6 +3,8 @@
 // placement } to the app. The imported terrain is a session overlay: IndexedDB keeps it across reloads, the shared link
 // and the saved .json know nothing about it.
 import { frame, profile, totalLength } from './geometry.mjs';
+import { siteBridge, siteParameters } from './site-config.mjs';
+import { createZoneEditor, zoneNames } from './zone-editor.mjs';
 import {
   autoPlacement,
   autoZOffset,
@@ -160,6 +162,15 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     drag = null,
     qaWindow = null,
     busy = false;
+  let configError = '';
+  const draftConfig = () => pending?.config ?? getConfig();
+  const configKeys = ['spans','width','material','skew','grade','elevation','approach'];
+  function configFields() {
+    const c=draftConfig();
+    for(const k of configKeys) $('dem-'+k).value=k==='spans'?c.spans.map(s=>s.length).join(' ; '):c[k];
+    const axis=pending.packet.bridge?.axis, length=axis?Math.hypot(axis[1][0]-axis[0][0],axis[1][1]-axis[0][1]):null;
+    $('dem-length-check').textContent=`Bridge: ${totalLength(c).toFixed(1)} m`+(length===null?' · no proposed axis':` · axis: ${length.toFixed(1)} m · difference: ${(totalLength(c)-length).toFixed(1)} m. Check the spans.`);
+  }
 
   const status = (text, error = false) => {
     const p = $('dem-status');
@@ -185,7 +196,7 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
 
   // Footprint outlines in packet coordinates for the current placement.
   const outlines = () => {
-    const c = getConfig(),
+    const c = draftConfig(),
       pl = pending.placement,
       to = pts => pts.map(([x, z]) => sceneToPacket(pl, x, z));
     return {
@@ -245,11 +256,13 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
       }
       path(zone.polygon);
       g.closePath();
-      g.fillStyle = zone.type === 'forest' ? 'rgba(34,120,56,0.38)' : 'rgba(40,120,220,0.5)';
+      g.fillStyle = zone.type === 'forest' ? 'rgba(0,158,115,0.38)' : zone.type === 'grass' ? 'rgba(240,228,66,0.3)' : 'rgba(0,114,178,0.4)';
       g.fill();
-      g.strokeStyle = zone.type === 'forest' ? '#1d6b33' : '#2a78d8';
+      g.strokeStyle = zone.type === 'forest' ? '#009E73' : zone.type === 'grass' ? '#F0E442' : '#0072B2';
+      g.setLineDash(zone.type==='forest'?[2*d,5*d]:zone.type==='grass'?[8*d,3*d,2*d,3*d]:zone.type==='water'?[7*d,4*d]:[]);
       g.lineWidth = 1.2 * d;
       g.stroke();
+      g.setLineDash([]);
     }
     const axis = packet.bridge?.axis;
     if (axis) {
@@ -294,6 +307,7 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     g.fill();
     g.stroke();
     // North arrow and scale bar.
+    editor.draw(g);
     g.fillStyle = '#fff';
     g.font = `${12 * d}px sans-serif`;
     g.fillText('N ↑', 10 * d, 18 * d);
@@ -313,7 +327,7 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
 
   // Ground under the alignment against the road line: shows what the vertical offset does.
   function drawProfile() {
-    const c = getConfig(),
+    const c = draftConfig(),
       pl = pending.placement,
       L = totalLength(c),
       reach = c.approach + 18,
@@ -370,6 +384,11 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     g.fillStyle = '#566e7c';
     g.font = `${11 * ratio}px sans-serif`;
     g.fillText(`road ${road[Math.round(n / 2)].toFixed(1)} m · ground under the middle ${fmt(ground[Math.round(n / 2)])} · abutments dashed`, 6 * ratio, H - 3 * ratio);
+    // 0.6.9: warn about an interference rather than silently excavating the imported ground.
+    const depth=c.material==='slab'?c.slabDepth:c.variableDepth?c.pierDepth:c.depth;
+    const conflict=ground.some((h,i)=>{const s=-reach+(L+2*reach)*i/n;return s>2&&s<L-2&&Number.isFinite(h)&&h>road[i]+0.17-c.deck-c.asphalt-c.haunch-depth;});
+    $('dem-conflict').hidden=!configError&&!conflict;
+    $('dem-conflict').textContent=configError || '⚠ The ground may touch the deck. The measured ground is kept: raise the profile or the vertical offset before applying.';
   }
 
   function syncFields() {
@@ -382,13 +401,17 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     $('dem-auto').classList.toggle('on', auto);
   }
   function changed() {
-    if (auto) pending.placement.zOffset = autoZOffset(pending.packet, getConfig(), pending.placement);
+    if (auto) pending.placement.zOffset = autoZOffset(pending.packet, draftConfig(), pending.placement);
     syncFields();
     drawMap();
   }
 
   async function show(packet, placement) {
-    pending = { packet, placement: placement ?? autoPlacement(packet, getConfig()) };
+    // A normalized copy owns the editable zones; grids remain shared and immutable.
+    packet = validatePacket(packet);
+    const config=placement?structuredClone(getConfig()):siteBridge(packet);
+    pending = { packet, config, placement: placement ?? autoPlacement(packet, config) };
+    configError='';
     auto = !placement;
     background = hillshade(packet);
     satellite = null;
@@ -396,6 +419,7 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     if (packet.image) {
       const img = new Image();
       img.onload = () => {
+        if(pending?.packet!==packet)return;
         satellite = img;
         drawMap();
       };
@@ -403,32 +427,50 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     }
     $('dem-place').hidden = false;
     $('dem-apply').disabled = false;
-    $('dem-apply').textContent = getOverlay() ? 'Update' : 'Import';
-    const zones = { river: 0, water: 0, forest: 0, road: 0 };
+    $('dem-apply').textContent = getOverlay() ? 'Apply to the project' : 'Create the bridge on this site';
+    const zones = { river: 0, water: 0, forest: 0, grass: 0, road: 0 };
     for (const z of packet.zones) zones[z.type]++;
     $('dem-info').textContent =
       `${packet.source || 'Terrain packet'} · ${packet.grid.cols} × ${packet.grid.rows} cells at ${packet.grid.cell} m · ` +
-      `${zones.river + zones.water} water, ${zones.forest} forest, ${zones.road} road zones · ` +
+      `${zones.river + zones.water} water, ${zones.forest} forest, ${zones.grass} grass, ${zones.road} road zones · ` +
       `${packet.image ? 'satellite image' : 'no image'}${packet.mns ? ' · surface model' : ''}` +
       (packet.attribution.length ? ' · ' + packet.attribution.join(' · ') : '');
     status(packet.bridge ? 'Block received. The bridge is on the axis drawn in QuickerAtlas: move it if needed.' : 'Block received. Place the bridge by dragging its footprint.');
     if (!dialog.open) dialog.showModal();
     syncFields();
+    configFields();
+    editor.reset();
     requestAnimationFrame(drawMap);
   }
 
-  async function accept(data, origin = '') {
+  // 0.6.9: acknowledgement to the sender (QuickerAtlas): received (valid), applied, closed without applying, or error.
+  let reply = null;
+  const acknowledge = (state, extra = {}) => {
+    if (!reply) return;
+    try {
+      reply.source.postMessage({ type: 'bs3d-terrain-ack', id: reply.id, state, ...extra }, reply.origin);
+    } catch {
+      /* sender closed */
+    }
+    if (state !== 'received') reply = null;
+  };
+  async function accept(data, origin = '', source = null) {
+    if (reply) acknowledge('closed');
+    reply = source && origin ? { source, origin, id: typeof data?.transferId === 'string' ? data.transferId.slice(0, 80) : null } : null;
     try {
       const packet = validatePacket(data);
       await show(packet);
+      acknowledge('received', { zones: packet.zones.length, axis: !!packet.bridge });
       notify?.(`Terrain block received${origin ? ' from ' + origin.replace(/^https?:\/\//, '') : ''}.`);
     } catch (e) {
       if (!dialog.open) dialog.showModal();
       status(e.message, true);
+      acknowledge('error', { message: String(e.message).slice(0, 300) });
     }
   }
 
   /* ---- pointer interaction ---- */
+  const editor=createZoneEditor({ $, packet:()=>pending?.packet, redraw:()=>pending&&drawMap(), toCanvas, ratio:dpr });
   const pointer = e => {
     const r = map.getBoundingClientRect();
     return [(e.clientX - r.left) * dpr(), (e.clientY - r.top) * dpr()];
@@ -438,6 +480,7 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     const [x, y] = pointer(e),
       o = outlines(),
       [hx, hy] = toCanvas(...o.handle);
+    if(editor.down(x,y,fromCanvas(x,y))){map.setPointerCapture(e.pointerId);return;}
     let mode = 'pan';
     if (Math.hypot(x - hx, y - hy) < 14 * dpr()) mode = 'rotate';
     else if (inPolygon(o.approach, ...fromCanvas(x, y))) mode = 'move';
@@ -449,6 +492,7 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     if (!pending) return;
     const [x, y] = pointer(e);
     hover = fromCanvas(x, y);
+    if(editor.move(hover))return;
     if (!drag) {
       const o = outlines(),
         [hx, hy] = toCanvas(...o.handle);
@@ -473,6 +517,7 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     }
   });
   const release = () => {
+    editor.up();
     drag = null;
     map.style.cursor = 'grab';
   };
@@ -505,7 +550,7 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
       const v = parseFloat(fields[key].value);
       if (!pending || !Number.isFinite(v)) return;
       pending.placement[key] = key === 'azimuth' ? ((v % 360) + 360) % 360 : v;
-      if (auto) pending.placement.zOffset = autoZOffset(pending.packet, getConfig(), pending.placement);
+      if (auto) pending.placement.zOffset = autoZOffset(pending.packet, draftConfig(), pending.placement);
       fields.zOffset.value = (Math.round(pending.placement.zOffset * 100) / 100).toString();
       drawMap();
     });
@@ -524,6 +569,16 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     auto = true;
     changed();
   };
+  for(const key of configKeys) $('dem-'+key).addEventListener('change',()=>{
+    if(!pending)return;
+    try {
+      const values=Object.fromEntries(configKeys.map(k=>[k,$('dem-'+k).value]));
+      pending.config=siteParameters(key==='grade'?{...pending.config,profile:'constant'}:pending.config,values);
+      configError='';$('dem-apply').disabled=false;configFields();changed();
+    } catch(e){configError=e.message;$('dem-apply').disabled=true;drawMap();}
+  });
+  $('dem-neutral').onclick=()=>{if(!pending)return;pending.config=siteBridge(pending.packet);configError='';$('dem-apply').disabled=false;configFields();changed();};
+  $('dem-current').onclick=()=>{if(!pending)return;pending.config=structuredClone(getConfig());configError='';$('dem-apply').disabled=false;configFields();changed();};
 
   /* ---- sources ---- */
   $('dem-qa').onclick = () => {
@@ -549,14 +604,17 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     }
   };
   $('dem-apply').onclick = async () => {
-    if (!pending || busy) return;
+    if (!pending || busy || configError) return;
+    if(editor.unfinished()){status('Finish or cancel the zone drawing before applying.',true);return;}
     busy = true;
     $('dem-apply').disabled = true;
     try {
-      await apply({ packet: pending.packet, placement: { ...pending.placement } });
+      await apply({ packet: validatePacket(pending.packet), config: pending.config, placement: { ...pending.placement } });
+      acknowledge('applied');
       dialog.close();
     } catch (e) {
       status(e.message, true);
+      acknowledge('error', { message: String(e.message).slice(0, 300) });
     } finally {
       busy = false;
       $('dem-apply').disabled = false;
@@ -572,13 +630,13 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
   window.addEventListener('message', e => {
     if (!originAllowed(e.origin)) return;
     const d = e.data;
-    if (d && typeof d === 'object' && d.type === 'bs3d-terrain') accept(d, e.origin);
+    if (d && typeof d === 'object' && d.type === 'bs3d-terrain') accept(d, e.origin, e.source);
   });
 
   function openDialog({ waiting = false } = {}) {
     const overlay = getOverlay();
     $('dem-remove').hidden = !overlay;
-    $('dem-apply').textContent = overlay ? 'Update' : 'Import';
+    $('dem-apply').textContent = overlay ? 'Apply to the project' : 'Create the bridge on this site';
     if (overlay && !pending) show(overlay.packet, { ...overlay.placement });
     else if (pending) {
       $('dem-place').hidden = false;
@@ -594,6 +652,8 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
   }
   $('dem-open').onclick = () => openDialog();
   dialog.addEventListener('close', () => {
+    acknowledge('closed');
+    pending=null;drag=null;
     if (!getOverlay()) return;
     $('dem-open').classList.add('active');
   });

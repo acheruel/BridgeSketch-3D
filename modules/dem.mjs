@@ -5,13 +5,10 @@
 import * as T from 'three';
 import { crossAt, frame, profile, supportStation, totalLength } from './geometry.mjs';
 import { packetToScene, sceneToPacket } from './terrain-packet.mjs';
+import { roadPath } from './road-path.mjs';
 
 const RAD = Math.PI / 180,
-  clamp = (v, a, b) => (v < a ? a : v > b ? b : v),
-  smooth = (a, b, x) => {
-    const t = clamp((x - a) / (b - a), 0, 1);
-    return t * t * (3 - 2 * t);
-  };
+  clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Per-packet data (cached): grid without holes, water rasters                                      */
@@ -184,9 +181,10 @@ function waterRaster(packet, zone) {
     if (Number.isFinite(v)) samples.push(v);
   }
   samples.sort((p, q) => p - q);
-  const flat = samples.length ? samples[Math.floor(samples.length * 0.03)] : P.lo;
+  const manualLevel = Number.isFinite(zone.level);
+  const flat = manualLevel ? zone.level : samples.length ? samples[Math.floor(samples.length * 0.03)] : P.lo;
   const lev = new Float32Array(nx * ny).fill(flat);
-  if (zone.type === 'river' && samples.length) {
+  if (zone.type === 'river' && samples.length && !manualLevel) {
     const R = Math.max(1, Math.ceil(12 / g.cell));
     for (let k = 0; k < lev.length; k++) {
       if (sd[k] < -9) continue;
@@ -285,6 +283,7 @@ export function demSite(dem) {
     dN = Math.cos(a),
     waters = packet.zones.filter(z => z.type === 'river' || z.type === 'water').map(z => waterRaster(packet, z)),
     forests = packet.zones.filter(z => z.type === 'forest'),
+    grasses = packet.zones.filter(z => z.type === 'grass'),
     roads = packet.zones.filter(z => z.type === 'road');
   // Packet-frame height (m), no offset: bilinear on the hole-free grid, clamped at the edge, then water beds.
   const heightAt = (px, py) => {
@@ -327,6 +326,11 @@ export function demSite(dem) {
     inside,
     waters,
     forests: forestBoxes,
+    grasses,
+    inGrass(x,z) {
+      const [px,py]=sceneToPacket(pl,x,z);
+      return grasses.some(zone=>insidePolygon(zone.polygon,px,py));
+    },
     roads,
     lo: P.lo + pl.zOffset,
     hi: P.hi + pl.zOffset,
@@ -362,18 +366,32 @@ export function demSite(dem) {
 /* Ground with the corridor carved                                                                  */
 /* ---------------------------------------------------------------------------------------------- */
 
-// The DTM stays as it is, except where the bridge and its approaches need room: terrain never rises above a level just
-// under the fill top (approach roads in cut, with 1H:1V side slopes), and between the abutments it never rises above the
-// bridge seat level (valley walls 2H:1V from the abutment faces, narrowing to nothing away from the deck). Where the DTM
-// is lower than the road, the usual approach fills and 2H:1V cones land on it. The same shape as the « profile » terrain
-// of the procedural scene, but a cap on the real ground instead of a replacement.
-const groundCache = new WeakMap();
+// 0.6.9: only approaches cut the DTM. Preserve measured ground between the abutments;
+// a conflicting bridge profile must be raised, never accommodated by inventing a valley.
+const groundCache = new WeakMap(),
+  partners = new WeakMap();
+// 0.6.9: twin bridges. Each bridge's ground also carries the approach cuts of the other one, so the terrain built by
+// bridge A, B's footings and both sets of fills agree. partner = { c, dem, to: (x, z) -> [x, z] in the partner frame }.
+export function setGroundPartner(c, partner) {
+  if (partner) partners.set(c, partner);
+  else partners.delete(c);
+}
 export function demGround(c, dem) {
   // One sampler per (config object, terrain): terrainSampler(c) is asked for many times while a scene is built.
-  const key = demKey(dem),
+  const partner = partners.get(c),
+    key = demKey(dem) + (partner ? '|' + demKey(partner.dem) : ''),
     hit = groundCache.get(c);
   if (hit?.key === key) return hit.ground;
-  const ground = makeGround(c, dem);
+  const own = makeGround(c, dem),
+    other = partner ? makeGround(partner.c, partner.dem) : null,
+    ground = other
+      ? (x, z) => {
+          const a = own(x, z),
+            [px, pz] = partner.to(x, z),
+            b = other(px, pz);
+          return b < a ? b : a;
+        }
+      : own;
   groundCache.set(c, { key, ground });
   return ground;
 }
@@ -382,8 +400,6 @@ function makeGround(c, dem) {
     raw = site.raw,
     L = totalLength(c),
     half = c.width / 2,
-    deepest = c.material === 'slab' ? (c.variableDepth ? c.pierDepth : c.slabDepth) : c.variableDepth ? c.pierDepth : c.depth,
-    seatDrop = c.asphalt + c.deck + c.haunch + deepest + 0.45,
     reach = c.approach + 18,
     LAT = 120;
   // Hot path (about 150 000 calls per rebuild): the alignment frames are computed here without allocation, and the support
@@ -434,10 +450,7 @@ function makeGround(c, dem) {
       const sb = Math.min(s, supL + reach);
       cap = top(sb) + 0.5 * (s - sb) + lateral;
     } else {
-      const inside = Math.min(s - f0, f1 - s),
-        w = 1 - smooth(half + 1.5, half + 5.5 + 2 * seatDrop, au),
-        road = top(s);
-      cap = road - w * (seatDrop + inside / 2) + (1 - w) * lateral;
+      return h;
     }
     return h < cap ? h : cap;
   };
@@ -719,8 +732,8 @@ export function buildWater(c, dem, ground, material, parent) {
         const k = j * w.nx + i,
           q = [take[k], take[k + 1], take[k + w.nx], take[k + w.nx + 1]];
         if (q.some(v => v < 0) || !(w.sd[k] > 0 || w.sd[k + 1] > 0 || w.sd[k + w.nx] > 0 || w.sd[k + w.nx + 1] > 0)) continue;
-        // (i, j) -> (i, j+1) -> (i+1, j) faces up (same winding as the terrain).
-        index.push(q[0], q[2], q[1], q[1], q[2], q[3]);
+        // 0.6.9: this raster advances north, unlike the DTM rows. Reverse its winding.
+        index.push(q[0], q[1], q[2], q[1], q[3], q[2]);
       }
     if (!index.length) continue;
     const geo = new T.BufferGeometry();
@@ -800,6 +813,27 @@ export function buildRoads(c, dem, ground, material, parent, skip) {
         mesh.name = 'Imported road';
         mesh.receiveShadow = true;
         mesh.userData.noBatch = true;
+        // 0.6.9: keep each visible road segment as a traffic path; no car crosses a clipped gap.
+        const route=roadPath(strip.map(p=>p.slice(0,2)),road.width,ground);
+        mesh.userData.route=route;
+        mesh.userData.lanes=road.lanes ?? (road.width>=6?2:1);
+        mesh.userData.oneway=road.oneway ?? 0;
+        if(road.width>=5) {
+          const vertices=[];
+          const line=(u,dashed)=>{
+            for(let s=-route.halfLength;s<route.halfLength;s+=1.5){
+              if(dashed && Math.floor((s+route.halfLength)/3)%3!==0)continue;
+              const end=Math.min(route.halfLength,s+1.5),a=route.sample(s,u-.06),b=route.sample(s,u+.06),d=route.sample(end,u-.06),e=route.sample(end,u+.06);
+              for(const p of [a,d,b,b,d,e])vertices.push(p.x,p.y+.018,p.z);
+            }
+          };
+          line(-road.width/2+.3,false);line(road.width/2-.3,false);
+          const lanes=mesh.userData.lanes;
+          for(let lane=1;lane<lanes;lane++)line(-road.width/2+road.width*lane/lanes,true);
+          const markingGeo=new T.BufferGeometry();markingGeo.setAttribute('position',new T.Float32BufferAttribute(vertices,3));markingGeo.computeVertexNormals();
+          const markingMat=new T.MeshStandardMaterial({color:'#fff5d9',roughness:1,side:T.DoubleSide});markingMat.userData.ownedMaterial=true;
+          const markings=new T.Mesh(markingGeo,markingMat);markings.name='Imported road markings';markings.receiveShadow=true;parent.add(markings);
+        }
         parent.add(mesh);
         meshes.push(mesh);
       }

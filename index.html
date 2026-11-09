@@ -71,11 +71,16 @@
             <div id="file-menu-pop" class="menu-pop" role="menu" aria-labelledby="file-menu-button">
               <button id="load" type="button" role="menuitem">
                 <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg
-                ><span class="mi-text"><b>Open</b><small>BridgeSketch configuration (.json)</small></span><kbd>Ctrl O</kbd>
+                ><span class="mi-text"><b>Open</b><small>Configuration (.json) or complete project (.bs3dproject)</small></span><kbd>Ctrl O</kbd>
               </button>
               <button id="save" type="button" role="menuitem">
                 <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg
                 ><span class="mi-text"><b>Save</b><small>Download the configuration (.json)</small></span><kbd>Ctrl S</kbd>
+              </button>
+              <!-- 0.6.9: bridge(s) + imported terrain, zones, placement and camera in one file -->
+              <button id="save-project" type="button" role="menuitem" disabled>
+                <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 19 6-10 4 6 2.5-4L21 19Z"/><path d="M12 3v6"/><path d="m9 6 3 3 3-3"/></svg
+                ><span class="mi-text"><b>Save complete project</b><small>Bridges, imported site and zones (.bs3dproject)</small></span>
               </button>
               <button id="profile-menu" type="button" role="menuitem">
                 <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17c4-1 5-8 9-8s5 5 9 4"/><path d="M3 21h18"/><path d="M7 21v-3M12 21v-9M17 21v-6"/></svg
@@ -110,7 +115,7 @@
           <button id="redo-quick" class="icon-button" type="button" data-action="redo" aria-label="Redo" title="Redo (Ctrl+Y)" disabled>
             <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
           </button>
-          <input id="file" type="file" accept=".json,application/json" hidden />
+          <input id="file" type="file" accept=".json,.bs3dproject,application/json" hidden />
         </div>
         <!-- 0.6.8: terrain from QuickerAtlas (DTM / DSM), an option; the procedural terrain and the examples stay the default -->
         <div class="dem-bar">
@@ -833,6 +838,35 @@
                 </p>
               </div>
             </details>
+            <!-- 0.6.9: bridge B, a second independent bridge on the same imported site (modules/twin-ui.mjs) -->
+            <details id="twin-group" class="input-group" data-group="site-twin">
+              <summary><span class="group-title">Bridge B · twin bridge</span><span class="group-meta" data-meta="site-twin"></span></summary>
+              <div class="group-body">
+                <p id="twin-off" class="hint"></p>
+                <div class="dem-source">
+                  <button id="twin-add" type="button">Add a parallel bridge from bridge A</button>
+                  <button id="twin-remove" type="button">Remove bridge B</button>
+                </div>
+                <div id="twin-fields" class="field-grid dem-fields">
+                  <label>Axis spacing A–B · m<input id="twin-spacing" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" step="0.1" min="-200" max="200" /></label>
+                  <label>Shift along A · m<input id="twin-shift" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" step="0.5" min="-300" max="300" /></label>
+                  <label>Turn · ° clockwise<input id="twin-turn" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" step="0.5" min="-45" max="45" /></label>
+                  <label>Deck width · m<input id="twin-width" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" step="0.1" min="4" max="40" /></label>
+                  <label>Spans · m (a ; b ; c)<input id="twin-spans" type="text" autocomplete="off" spellcheck="false" /></label>
+                  <label>Deck type<select id="twin-material"><option value="concrete">Precast concrete girders</option><option value="steel">Steel plate girders</option><option value="slab">Solid slab</option><option value="box">Steel box girders</option><option value="psbox">Prestressed box</option></select></label>
+                  <label>Skew · °<input id="twin-skew" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" step="1" min="-45" max="45" /></label>
+                  <label>Grade · %<input id="twin-grade" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" step="0.1" min="-6" max="6" /></label>
+                  <label>Profile elevation · m<input id="twin-elevation" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" step="0.1" /></label>
+                </div>
+                <p id="twin-check" class="hint" role="status" aria-live="polite"></p>
+                <div class="dem-source"><button id="twin-copy" type="button">Copy bridge A’s deck to B</button></div>
+                <p class="hint">
+                  Axis spacing is measured to the right of bridge A, looking from its start to its end (negative = left).
+                  Clear gap = spacing − half width A − half width B. Railings, colours, lanes and the other settings follow
+                  bridge A. Not in the IFC export yet.
+                </p>
+              </div>
+            </details>
             <details class="input-group" data-group="site-env">
               <summary><span class="group-title">Surroundings</span><span class="group-meta" data-meta="site-env"></span></summary>
               <div class="group-body">
@@ -1078,11 +1112,10 @@
     <dialog id="dem-dialog" aria-labelledby="demTitle">
       <form method="dialog">
         <button class="close-dialog" aria-label="Close" value="close">×</button>
-        <h2 id="demTitle">Import DTM / DSM · MNT / MNS</h2>
+        <h2 id="demTitle">Site and bridge · QuickerAtlas</h2>
         <p id="dem-intro">
-          Pick a block on the satellite map in QuickerAtlas; it comes back here as a fine 3D terrain with its water,
-          forest and road zones. The bridge is not dropped into the middle: place it on the terrain below. The usual
-          terrain and the examples stay the default.
+          Extract the site in QuickerAtlas, then define the bridge and correct its zones here. The measured ground under
+          the bridge is kept. The proposed bridge is a starting point to check, not the real structure.
         </p>
         <div id="dem-source" class="dem-source">
           <button id="dem-qa" type="button" class="primary">Choose the block in QuickerAtlas</button>
@@ -1091,6 +1124,21 @@
         </div>
         <p id="dem-status" class="dem-status" role="status" aria-live="polite" hidden></p>
         <div id="dem-place" hidden>
+          <details class="dem-section" open>
+            <summary>Bridge to place</summary>
+            <div class="dem-source"><button id="dem-neutral" type="button">New neutral bridge</button><button id="dem-current" type="button">Keep my current bridge</button></div>
+            <div class="dem-fields" id="dem-bridge-fields">
+              <label>Spans · m (a ; b ; c)<input id="dem-spans" type="text" /></label>
+              <label>Deck width · m<input id="dem-width" type="number" min="4" max="30" step="0.1" /></label>
+              <label>Deck type<select id="dem-material"><option value="concrete">Precast concrete girders</option><option value="steel">Steel plate girders</option><option value="slab">Solid slab</option><option value="box">Steel box girders</option><option value="psbox">Prestressed box</option></select></label>
+              <label>Skew · °<input id="dem-skew" type="number" step="1" /></label>
+              <label>Grade · %<input id="dem-grade" type="number" step="0.1" /></label>
+              <label>Profile elevation in the scene · m<input id="dem-elevation" type="number" step="0.1" /></label>
+              <label>Approaches · m<input id="dem-approach" type="number" step="1" /></label>
+            </div>
+            <p id="dem-length-check" class="hint"></p>
+          </details>
+          <p id="dem-conflict" class="dem-status error" role="status" hidden></p>
           <div class="dem-stage">
             <canvas id="dem-map" width="640" height="420" aria-label="Terrain preview with the bridge footprint. Drag the footprint to move it, the round handle to turn it."></canvas>
             <div id="dem-readout" class="dem-readout"></div>
@@ -1117,6 +1165,23 @@
               ></label
             >
           </div>
+          <details class="dem-section" open>
+            <summary>Site zones · edit without a new extraction</summary>
+            <div class="dem-fields">
+              <label>Selected zone<select id="dem-zone-list"><option value="">None</option></select></label>
+              <label>Type<select id="dem-zone-type"><option value="water">Lake / pond</option><option value="river">River</option><option value="forest">Forest</option><option value="grass">Grass / open ground</option><option value="road">Road</option></select></label>
+              <label>Road width · m<input id="dem-zone-width" type="number" min="3" max="40" step="0.5" value="7" /></label>
+              <label>Water level · m absolute (empty = estimated)<input id="dem-zone-level" type="number" step="0.1" /></label>
+            </div>
+            <div class="dem-source"><button id="dem-zone-new" type="button">Draw a zone</button><button id="dem-zone-finish" type="button" disabled>Finish drawing</button><button id="dem-zone-cancel" type="button" disabled>Cancel drawing</button><button id="dem-zone-delete" type="button" disabled>Delete zone</button><button id="dem-zone-undo" type="button" disabled>Undo last zone edit</button></div>
+            <p id="dem-zone-help" class="hint" role="status">Select a zone to drag its vertices. Draw: click on the map, then finish.</p>
+            <div class="dem-fields">
+              <label>Vertex<select id="dem-vertex"></select></label>
+              <label>East · m<input id="dem-vertex-x" type="number" step="any" /></label>
+              <label>North · m<input id="dem-vertex-y" type="number" step="any" /></label>
+            </div>
+            <div class="dem-source"><button id="dem-vertex-add" type="button">Insert a vertex after</button><button id="dem-vertex-delete" type="button">Remove this vertex</button><button id="dem-save-terrain" type="button">Download corrected terrain (.bs3dterrain)</button></div>
+          </details>
           <p class="hint" id="dem-info"></p>
         </div>
         <p class="hint">
@@ -1126,7 +1191,7 @@
         <div class="dialog-actions">
           <button id="dem-remove" type="button" hidden>Remove imported terrain</button>
           <button value="close">Cancel</button>
-          <button id="dem-apply" class="primary" type="button" disabled>Import</button>
+          <button id="dem-apply" class="primary" type="button" disabled>Create the bridge on this site</button>
         </div>
       </form>
     </dialog>
@@ -1146,6 +1211,15 @@
           Starfield and grass species adapted from CK42BB/procedural-stars-threejs and procedural-grass-threejs (MIT);
           atmosphere after Hillaire 2020 (sebh/UnrealEngineSkyAtmosphere, MIT) and Bruneton 2008 (BSD); Preetham sky
           after Tw1ddle/Sky-Shader and the three.js Sky object (MIT); river details after Noniv/web-ocean (MIT).
+        </p>
+        <h3>Version 0.6.9</h3>
+        <p>
+          Imported sites made faithful and editable: water visible from above, measured ground kept under the bridge (a
+          conflict is reported instead of a dug valley), sun path turned with geographic north (compass in the view).
+          A neutral bridge to set before placing it on the site; water, river, forest, grass and road zones editable here
+          without a new extraction, with a manual water level; road markings and traffic on the imported roads. Bridge B:
+          a second, independent bridge on the same site. Transfers from QuickerAtlas are acknowledged (received,
+          applied), and File › Save complete project keeps bridges, site and zones in one .bs3dproject file.
         </p>
         <h3>Version 0.6.8</h3>
         <p>

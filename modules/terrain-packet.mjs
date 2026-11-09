@@ -112,9 +112,10 @@ export function validatePacket(p) {
   const zones = [];
   for (const z of Array.isArray(p.zones) ? p.zones : []) {
     if (!z || typeof z !== 'object') continue;
-    if (z.type === 'river' || z.type === 'water' || z.type === 'forest') {
+    if (z.type === 'river' || z.type === 'water' || z.type === 'forest' || z.type === 'grass') {
       if (Array.isArray(z.polygon) && z.polygon.length >= 3 && z.polygon.every(pt))
-        zones.push({ type: z.type, source: z.source ?? 'user', polygon: z.polygon.map(q => [q[0], q[1]]) });
+        zones.push({ type: z.type, source: z.source ?? 'user', polygon: z.polygon.map(q => [q[0], q[1]]),
+          ...(['water','river'].includes(z.type) && finite(z.level) ? {level:z.level} : {}) });
     } else if (z.type === 'road') {
       if (Array.isArray(z.line) && z.line.length >= 2 && z.line.every(pt))
         zones.push({
@@ -122,6 +123,10 @@ export function validatePacket(p) {
           source: z.source ?? 'user',
           line: z.line.map(q => [q[0], q[1]]),
           width: finite(z.width) && z.width > 0 ? Math.min(40, z.width) : 7,
+          // 0.6.9: optional OSM attributes (lanes, one-way 1/-1, on a structure); absent = estimated.
+          ...(finite(z.lanes) && z.lanes >= 1 ? { lanes: Math.min(8, Math.round(z.lanes)) } : {}),
+          ...(z.oneway === 1 || z.oneway === -1 ? { oneway: z.oneway } : {}),
+          ...(z.bridge === true ? { bridge: true } : {}),
         });
     }
   }
@@ -216,6 +221,15 @@ export function packetToScene(pl, px, py) {
     ex = px - pl.cx,
     ey = py - pl.cy;
   return [ex * dE + ey * dN, ex * dN - ey * dE];
+}
+
+// 0.6.9: artistic day, east to west with the sun to the south. Geographic orientation,
+// not an astronomical clock; keep the legacy direction for scenes without a real site.
+export function siteSun(hour, placement = null) {
+  const angle = ((hour - 6.5) * Math.PI) / 13;
+  const east = Math.cos(angle) * 80, north = -40;
+  const [x, z] = placement ? packetToScene({ ...placement, cx: 0, cy: 0 }, east, north) : [east, 40];
+  return { x, z, elevation: Math.sin(angle), lightY: 8 + 60 * Math.max(0, Math.sin(angle)), skyY: 80 * Math.sin(angle) };
 }
 // Ground height in the scene (m) at scene (x, z), before any corridor carving; NaN where the packet has no data.
 export function sceneGround(packet, pl, x, z) {

@@ -20,6 +20,11 @@ export const setActiveDem = dem => {
   activeDem = dem ?? null;
 };
 export const getActiveDem = () => activeDem;
+// 0.6.9: footprint of bridge B (deck and approaches) in this scene frame: imported roads, trees and grass keep off it.
+let twinZone = null;
+export const setTwinZone = f => {
+  twinZone = f ?? null;
+};
 // Footing bottom under a support on the imported ground (null on the procedural terrain).
 export const supportEarth = (c, station, abutment) => (activeDem ? demEarth(c, activeDem, station, abutment) : null);
 
@@ -658,7 +663,7 @@ function importedTerrain(c, m, parent, dem, ground, footprints) {
   let material = c.terrainMode === 'snow' ? m.snow : m.grass;
   if (dem.texture) {
     // The image already carries its own light and shade: toned down so the sun does not wash it out.
-    material = new T.MeshStandardMaterial({ map: dem.texture, color: '#b4b4b4', roughness: 1, metalness: 0 });
+    material = new T.MeshStandardMaterial({ map: dem.texture, color: '#ffffff', roughness: 1, metalness: 0 });
     material.userData.ownedMaterial = true;
   }
   const terrain = new T.Mesh(built.geometry, material);
@@ -699,27 +704,23 @@ function importedTerrain(c, m, parent, dem, ground, footprints) {
     polygonOffsetUnits: -2,
   });
   road.userData.ownedMaterial = true;
-  buildRoads(c, dem, ground, road, parent, (x, z) => intersectsRoad(footprints, x, z, 2));
+  const roads=buildRoads(c, dem, ground, road, parent, (x, z) => intersectsRoad(footprints, x, z, 2) || !!twinZone?.(x, z, 2));
+  // 0.6.9: budgeted traffic on the actual imported polylines, never across clipped gaps.
+  let count=0;
+  for(const mesh of roads) {
+    const route=mesh.userData.route,lanes=mesh.userData.lanes;
+    if(route.halfLength<10 || route.width/lanes<2.6)continue;
+    for(let lane=0;lane<lanes;lane++)for(let s=-route.halfLength+8;s<route.halfLength-8&&count<60;s+=45) {
+      const u=-route.width/2+route.width*(lane+.5)/lanes;
+      vehicle(parent,m,c,s,u,count%5===0?'van':'sedan',mesh.userData.oneway?mesh.userData.oneway>0:u>=0,route,{speed:30});count++;
+    }
+  }
   parent.userData.demTriangles = built.triangles;
   return waters;
 }
 
-export function addEnvironment(c, m, parent, fills) {
-  // 0.6.8: D is the imported terrain, if any. Its scatter box (trees, meadow) is a fixed square round the bridge.
-  const D = activeDem,
-    L = totalLength(c),
-    ss = stations(c),
-    points = fills.flat(),
-    extent = D ? 260 : fills.extent || Math.max(L + 2 * c.approach + 36, ...points.map(p => 2 * Math.abs(p[0]) + 8)),
-    halfZ = D ? 130 : Math.max(c.sceneWidth / 2, ...points.map(p => Math.abs(p[2]) + 8)),
-    rng = seeded(c.seed),
-    obstacles = [],
-    waters = [],
-    ground = c.terrainMode === 'snow' ? m.snow : m.grass,
-    tier = effectiveQuality(c.renderQuality),
-    season = c.terrainMode === 'snow' ? 'snow' : c.terrainMode === 'fall' ? 'fall' : 'summer',
-    riverReach = Math.hypot(extent / 2, halfZ) + 8,
-    riverSteps = Math.ceil(riverReach);
+// 0.6.9: approach fills alone, also for bridge B (built without its own site) on a shared imported terrain.
+export function addFills(m, parent, fills, ground) {
   for (const finish of ['grass', 'stone', 'concrete']) {
     const fillPos = [];
     for (const p of fills.filter(face => face.finish === finish))
@@ -744,6 +745,27 @@ export function addEnvironment(c, m, parent, fills) {
       parent.add(fill);
     }
   }
+}
+
+export function addEnvironment(c, m, parent, fills) {
+  // 0.6.8: D is the imported terrain, if any. Its scatter box (trees, meadow) is a fixed square round the bridge.
+  const D = activeDem,
+    // 0.6.9: vegetation covers the actual site; its fixed instance budget still limits rendering cost.
+    siteCorners = D ? [[D.packet.grid.x0,D.packet.grid.y0], [D.packet.grid.x0+(D.packet.grid.cols-1)*D.packet.grid.cell,D.packet.grid.y0], [D.packet.grid.x0,D.packet.grid.y0-(D.packet.grid.rows-1)*D.packet.grid.cell], [D.packet.grid.x0+(D.packet.grid.cols-1)*D.packet.grid.cell,D.packet.grid.y0-(D.packet.grid.rows-1)*D.packet.grid.cell]].map(p=>demSite(D).toScene(...p)) : [],
+    L = totalLength(c),
+    ss = stations(c),
+    points = fills.flat(),
+    extent = D ? Math.max(30,...siteCorners.map(p=>2*Math.abs(p[0]))) : fills.extent || Math.max(L + 2 * c.approach + 36, ...points.map(p => 2 * Math.abs(p[0]) + 8)),
+    halfZ = D ? Math.max(15,...siteCorners.map(p=>Math.abs(p[1]))) : Math.max(c.sceneWidth / 2, ...points.map(p => Math.abs(p[2]) + 8)),
+    rng = seeded(c.seed),
+    obstacles = [],
+    waters = [],
+    ground = c.terrainMode === 'snow' ? m.snow : m.grass,
+    tier = effectiveQuality(c.renderQuality),
+    season = c.terrainMode === 'snow' ? 'snow' : c.terrainMode === 'fall' ? 'fall' : 'summer',
+    riverReach = Math.hypot(extent / 2, halfZ) + 8,
+    riverSteps = Math.ceil(riverReach);
+  addFills(m, parent, fills, ground);
   // 0.6.8: on imported terrain the DTM and its zones replace the crossings, the river and the procedural scenery.
   if (!D)
     c.spans.forEach((s, i) => {
@@ -1078,7 +1100,7 @@ export function addEnvironment(c, m, parent, fills) {
       const p = coordinates(o, x, z);
       if (Math.abs(p.across - (o.type === 'water' ? riverWiggle(p.along, c) : 0)) < o.width / 2 + margin) return true;
     }
-    return intersectsRoad(roadZones, x, z, margin) || demOccupied(x, z, margin);
+    return intersectsRoad(roadZones, x, z, margin) || demOccupied(x, z, margin) || !!twinZone?.(x, z, margin);
   };
   // Woodland (0.6.2): groves where a low-frequency noise field is high, packed at 3–5 m with a few clearings, and
   // scattered trees elsewhere. Crowns may approach a road or river closer inside a grove (2.2 m per scale unit);
@@ -1239,7 +1261,7 @@ export function addEnvironment(c, m, parent, fills) {
           const p = coordinates(o, x, z);
           if (Math.abs(p.across - (o.type === 'water' ? riverWiggle(p.along, c) : 0)) < o.width / 2 + margin) return true;
         }
-        return intersectsRoad(groundZones, x, z, margin) || nearSupport(x, z);
+        return intersectsRoad(groundZones, x, z, margin) || nearSupport(x, z) || !!twinZone?.(x, z, margin);
       };
     // The scatter (about 40 000 tufts) dominates a rebuild: reuse it while nothing that shapes the ground changes.
     const meadowKey = meadowCacheKey(c, tier);
@@ -1250,7 +1272,8 @@ export function addEnvironment(c, m, parent, fills) {
       seed: c.seed,
       budget: grassBudget[tier] ?? grassBudget.balanced,
       height: grassHeight,
-      occupied: (x, z, margin) => clearGround(x, z, margin) || nearWater(x, z),
+      occupied: (x, z, margin) => clearGround(x, z, margin) || nearWater(x, z) ||
+        (site?.grasses.length && !site.inGrass(x,z) && grassHeight(x,z) <= terrainHeight(x,z)+0.01),
       // Wet river banks grow sedges and reeds; 2H:1V slopes and embankments dry bunch grass.
       zone: (x, z) => {
         for (const o of obstacles) {

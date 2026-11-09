@@ -65,6 +65,13 @@ export function vehicle(parent, m, c, s, u, type, forward = true, road, extra = 
 
 export function positionVehicle(group, c) {
   const { s, u, forward, road, halfLength, halfWidth, verticalOffset = 0 } = group.userData.route;
+  // 0.6.9: imported road follows a polyline and the sampled terrain, including its local grade.
+  if(road?.sample) {
+    const p=road.sample(s,u),a=road.sample(s-.5,u),b=road.sample(s+.5,u),left=road.sample(s,u-.5),right=road.sample(s,u+.5),dir=forward?1:-1;
+    group.position.set(p.x,p.y+.025+verticalOffset,p.z);group.rotation.order='YZX';
+    group.rotation.set(-Math.atan(right.y-left.y)*dir,-Math.atan2(p.tz,p.tx)+(forward?0:Math.PI),Math.atan2(b.y-a.y,Math.hypot(b.x-a.x,b.z-a.z))*dir);
+    group.visible=Math.abs(s)<=road.halfLength-halfLength;return;
+  }
   // Bank the body onto the crossfall (about the 1.8 m axle track) so the wheels sit flush on the deck instead of
   // floating on the low side; trains and flat carriageways stay level. Constant for a vehicle, so computed once.
   if (group.userData.roll === undefined) {

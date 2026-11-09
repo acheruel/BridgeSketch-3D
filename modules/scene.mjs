@@ -47,7 +47,7 @@ import {
   trussSupportHalf,
 } from './geometry.mjs';
 import { addArch, addPsbox, addStrutLeg, addTruss } from './systems.mjs';
-import { addEnvironment, approachSurfaces, frontSlopeFit, getActiveDem, setActiveDem, supportEarth, terrainSampler } from './terrain.mjs';
+import { addEnvironment, addFills, approachSurfaces, frontSlopeFit, getActiveDem, setActiveDem, supportEarth, terrainSampler } from './terrain.mjs';
 import {
   beam,
   box,
@@ -95,7 +95,7 @@ export function laneSpeed(c, lane, type = 'sedan') {
 // 0.6.8: `dem` ({ packet, placement, texture? }, see dem.mjs) puts the bridge on an imported terrain: ground height,
 // approach fills, footings and the whole site then follow the DTM. Omitted (undefined) keeps the previous setting, null
 // goes back to the procedural terrain; the app always passes it.
-export function buildBridge(c, m, { batch = true, site = true, lights = site, dem } = {}) {
+export function buildBridge(c, m, { batch = true, site = true, lights = site, dem, fills: ownFills = false } = {}) {
   if (dem !== undefined) setActiveDem(dem);
   const imported = dem === undefined ? !!getActiveDem() : !!dem;
   const preview = approachSurfaces(c),
@@ -1134,6 +1134,8 @@ export function buildBridge(c, m, { batch = true, site = true, lights = site, de
     if (fills.extent) for (const mesh of deck.children.slice(first)) if (mesh.isMesh) clipMeshAtCut(mesh, target, start);
   }
   const waters = site ? addEnvironment(c, m, setting, fills) : [];
+  // 0.6.9: bridge B keeps its own approach fills on the terrain built by bridge A.
+  if (!site && ownFills) addFills(m, setting, fills, c.terrainMode === 'snow' ? m.snow : m.grass);
   // Water marks on piers standing in the (first) river.
   const stain = m.concrete.userData.stain;
   if (stain) {

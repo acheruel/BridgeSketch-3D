@@ -2,7 +2,7 @@
 
 **Try it online:** [BridgeSketch 3D on GitHub Pages](https://acheruel.github.io/BridgeSketch-3D/)
 
-**A quick visual tool for bridge concepts** · Version 0.6.8 · 6 November 2026 · Anthony Chéruel
+**A quick visual tool for bridge concepts** · Version 0.6.9 · 8 November 2026 · Anthony Chéruel
 
 BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a span arrangement, deck, supports and site, then inspect the result from above, below or along the obstacle being crossed. It runs in the browser from static files, with no account, backend or build step.
 
@@ -18,6 +18,14 @@ BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a
 - **Parameters:** collapsible sections and formulas in numeric fields, such as `=12*3`.
 - **History:** undo and redo with Ctrl+Z / Ctrl+Y.
 - **Files and export:** save and open JSON, share link, PNG snapshot, GLB export and IFC export (2x3, 4, 4.3).
+
+## What's new in 0.6.9
+
+- **Faithful imported sites:** imported lakes and rivers are visible from above; the measured ground under the bridge is kept (a deck that touches it is reported, no valley is dug any more); the sun path follows geographic north, with a compass in the view.
+- **Create the bridge on the site:** the import dialog starts from a neutral bridge (equal spans on the axis length) whose spans, width, deck type, skew, grade, elevation and approaches you set before placing it, or keeps your current bridge.
+- **Edit the site zones here:** draw, move, retype or delete water, river, forest, grass and road zones without a new extraction in QuickerAtlas, set a water level by hand, and download the corrected `.bs3dterrain`. Grass grows on grass zones; imported roads get markings and traffic.
+- **Bridge B (twin bridges):** in the Site tab, add a parallel bridge from bridge A, then give it its own spacing, shift, turn, width, spans, deck type, skew, grade and elevation. Both bridges share the terrain, water, roads and light; the ground carries both sets of approaches.
+- **Complete project:** File › Save complete project writes a `.bs3dproject` (bridges, imported terrain, edited zones, placement, camera) that opens identically in another browser. QuickerAtlas now shows when its block is received and applied.
 
 ## What's new in 0.6.8
 
