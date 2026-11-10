@@ -40,6 +40,28 @@
             <button id="reset" class="text-button" type="button" title="Back to the starting concept (Undo brings it back)">Reset</button>
           </div>
         </div>
+        <!-- 0.7.0: two independent bridges. The switch chooses the bridge edited by the whole panel (modules/twin-ui.mjs) -->
+        <div class="bridge-switch" role="group" aria-label="Bridge being edited">
+          <button id="bridge-a" type="button" aria-pressed="true"><b>A</b><span>Bridge A</span></button>
+          <button id="bridge-b" type="button" aria-pressed="false" class="add"><b>B</b><span>Add bridge B</span></button>
+        </div>
+        <details id="twin-box" class="twin-box" open hidden>
+          <summary>Position of bridge B <small>drag B on the plan</small></summary>
+          <canvas id="twin-pad" class="twin-pad" width="320" height="190" aria-label="Plan of the two bridges. Drag bridge B to move it; drag its round handle to turn it. The fields below hold the same values."></canvas>
+          <p id="twin-check" class="twin-check" role="status" aria-live="polite"></p>
+          <div class="twin-fields">
+            <label>Gap between decks · m<input id="twin-gap" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></label>
+            <label>Shift along A · m<input id="twin-shift" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></label>
+            <label>Turn · °<input id="twin-turn" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></label>
+          </div>
+          <div class="twin-actions">
+            <button id="twin-side" type="button" title="Put bridge B on the other side of bridge A"></button>
+            <button id="twin-align" type="button" title="Parallel to bridge A, no shift, 3 m between the decks">Parallel, 3 m apart</button>
+            <button id="twin-recopy" type="button" title="Make bridge B an exact copy of bridge A again (its position is kept)">Copy A again</button>
+            <button id="twin-remove" type="button" class="danger">Remove bridge B</button>
+          </div>
+          <p id="twin-editing" class="hint"></p>
+        </details>
         <label class="variant-label"
           >Variant name<input
             id="variantName"
@@ -130,6 +152,8 @@
             ><span>Import DTM/DSM</span>
           </button>
         </div>
+        <!-- 0.7.0: the satellite image of an imported terrain can be taken off (grass ground) and put back -->
+        <label id="dem-image-row" class="dem-image-row" hidden><input id="dem-image" type="checkbox" checked /><span>Satellite image on the terrain</span></label>
         <div id="restore-bar" hidden>
           <div class="rb-text"><b>Unsaved model found</b><small id="restore-info"></small></div>
           <div class="rb-actions">
@@ -838,35 +862,6 @@
                 </p>
               </div>
             </details>
-            <!-- 0.6.9: bridge B, a second independent bridge on the same imported site (modules/twin-ui.mjs) -->
-            <details id="twin-group" class="input-group" data-group="site-twin">
-              <summary><span class="group-title">Bridge B · twin bridge</span><span class="group-meta" data-meta="site-twin"></span></summary>
-              <div class="group-body">
-                <p id="twin-off" class="hint"></p>
-                <div class="dem-source">
-                  <button id="twin-add" type="button">Add a parallel bridge from bridge A</button>
-                  <button id="twin-remove" type="button">Remove bridge B</button>
-                </div>
-                <div id="twin-fields" class="field-grid dem-fields">
-                  <label>Axis spacing A–B · m<input id="twin-spacing" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" step="0.1" min="-200" max="200" /></label>
-                  <label>Shift along A · m<input id="twin-shift" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" step="0.5" min="-300" max="300" /></label>
-                  <label>Turn · ° clockwise<input id="twin-turn" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" step="0.5" min="-45" max="45" /></label>
-                  <label>Deck width · m<input id="twin-width" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" step="0.1" min="4" max="40" /></label>
-                  <label>Spans · m (a ; b ; c)<input id="twin-spans" type="text" autocomplete="off" spellcheck="false" /></label>
-                  <label>Deck type<select id="twin-material"><option value="concrete">Precast concrete girders</option><option value="steel">Steel plate girders</option><option value="slab">Solid slab</option><option value="box">Steel box girders</option><option value="psbox">Prestressed box</option></select></label>
-                  <label>Skew · °<input id="twin-skew" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" step="1" min="-45" max="45" /></label>
-                  <label>Grade · %<input id="twin-grade" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" step="0.1" min="-6" max="6" /></label>
-                  <label>Profile elevation · m<input id="twin-elevation" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" step="0.1" /></label>
-                </div>
-                <p id="twin-check" class="hint" role="status" aria-live="polite"></p>
-                <div class="dem-source"><button id="twin-copy" type="button">Copy bridge A’s deck to B</button></div>
-                <p class="hint">
-                  Axis spacing is measured to the right of bridge A, looking from its start to its end (negative = left).
-                  Clear gap = spacing − half width A − half width B. Railings, colours, lanes and the other settings follow
-                  bridge A. Not in the IFC export yet.
-                </p>
-              </div>
-            </details>
             <details class="input-group" data-group="site-env">
               <summary><span class="group-title">Surroundings</span><span class="group-meta" data-meta="site-env"></span></summary>
               <div class="group-body">
@@ -1112,10 +1107,9 @@
     <dialog id="dem-dialog" aria-labelledby="demTitle">
       <form method="dialog">
         <button class="close-dialog" aria-label="Close" value="close">×</button>
-        <h2 id="demTitle">Site and bridge · QuickerAtlas</h2>
+        <h2 id="demTitle">Import terrain · QuickerAtlas</h2>
         <p id="dem-intro">
-          Extract the site in QuickerAtlas, then define the bridge and correct its zones here. The measured ground under
-          the bridge is kept. The proposed bridge is a starting point to check, not the real structure.
+          Pick a block in QuickerAtlas (LiDAR ground, satellite image, water, forest and roads), then place the bridge on it.
         </p>
         <div id="dem-source" class="dem-source">
           <button id="dem-qa" type="button" class="primary">Choose the block in QuickerAtlas</button>
@@ -1123,70 +1117,59 @@
           <input id="dem-file" type="file" accept=".bs3dterrain,.json,application/json" hidden />
         </div>
         <p id="dem-status" class="dem-status" role="status" aria-live="polite" hidden></p>
-        <div id="dem-place" hidden>
-          <details class="dem-section" open>
-            <summary>Bridge to place</summary>
-            <div class="dem-source"><button id="dem-neutral" type="button">New neutral bridge</button><button id="dem-current" type="button">Keep my current bridge</button></div>
-            <div class="dem-fields" id="dem-bridge-fields">
-              <label>Spans · m (a ; b ; c)<input id="dem-spans" type="text" /></label>
-              <label>Deck width · m<input id="dem-width" type="number" min="4" max="30" step="0.1" /></label>
-              <label>Deck type<select id="dem-material"><option value="concrete">Precast concrete girders</option><option value="steel">Steel plate girders</option><option value="slab">Solid slab</option><option value="box">Steel box girders</option><option value="psbox">Prestressed box</option></select></label>
-              <label>Skew · °<input id="dem-skew" type="number" step="1" /></label>
-              <label>Grade · %<input id="dem-grade" type="number" step="0.1" /></label>
-              <label>Profile elevation in the scene · m<input id="dem-elevation" type="number" step="0.1" /></label>
-              <label>Approaches · m<input id="dem-approach" type="number" step="1" /></label>
+        <!-- 0.7.0: the map on the left (bridge and zones are moved on it), the settings on the right -->
+        <div id="dem-place" class="dem-layout" hidden>
+          <div class="dem-left">
+            <div class="dem-stage">
+              <canvas id="dem-map" width="640" height="640" aria-label="Terrain map. Drag the bridge to move it and its round handle to turn it. Click a zone to select it, drag it to move it."></canvas>
+              <div id="dem-readout" class="dem-readout"></div>
+              <p class="dem-tips">Drag the <b>bridge</b> to move it · round handle to turn it · wheel to zoom · drag the ground to pan</p>
             </div>
-            <p id="dem-length-check" class="hint"></p>
-          </details>
-          <p id="dem-conflict" class="dem-status error" role="status" hidden></p>
-          <div class="dem-stage">
-            <canvas id="dem-map" width="640" height="420" aria-label="Terrain preview with the bridge footprint. Drag the footprint to move it, the round handle to turn it."></canvas>
-            <div id="dem-readout" class="dem-readout"></div>
+            <canvas id="dem-profile" width="640" height="110" aria-label="Ground profile along the bridge"></canvas>
+            <p id="dem-conflict" class="dem-status error" role="status" hidden></p>
           </div>
-          <canvas id="dem-profile" width="640" height="110" aria-label="Ground profile along the bridge"></canvas>
-          <div class="dem-fields">
-            <label
-              >Rotation (° from north)<input id="dem-azimuth" type="number" step="any" inputmode="decimal"
-            /></label>
-            <label
-              >Move east (m)<input id="dem-cx" type="number" step="any" inputmode="decimal"
-            /></label>
-            <label
-              >Move north (m)<input id="dem-cy" type="number" step="any" inputmode="decimal"
-            /></label>
-            <label
-              >Vertical offset (m)<span class="dem-offset"
-                ><input id="dem-zoffset" type="number" step="any" inputmode="decimal" /><button
-                  id="dem-auto"
-                  type="button"
-                  title="The road profile meets the ground at both abutments"
-                  aria-pressed="true"
-                >Auto</button></span
-              ></label
-            >
+          <div class="dem-right">
+            <details class="dem-section" open>
+              <summary><b>1</b> Bridge</summary>
+              <div class="dem-seg"><button id="dem-neutral" type="button" title="Equal spans on the length of the axis drawn in QuickerAtlas">New bridge on the axis</button><button id="dem-current" type="button" title="Keep the bridge you were working on">Keep my bridge</button></div>
+              <div class="dem-fields" id="dem-bridge-fields">
+                <label class="wide">Spans · m (a ; b ; c)<input id="dem-spans" type="text" /></label>
+                <label>Deck width · m<input id="dem-width" type="number" min="4" max="30" step="0.1" /></label>
+                <label>Deck type<select id="dem-material"><option value="concrete">Precast concrete girders</option><option value="steel">Steel plate girders</option><option value="slab">Solid slab</option><option value="box">Steel box girders</option><option value="psbox">Prestressed box</option></select></label>
+                <label>Skew · °<input id="dem-skew" type="number" step="1" /></label>
+                <label>Grade · %<input id="dem-grade" type="number" step="0.1" /></label>
+                <label>Profile elevation · m<input id="dem-elevation" type="number" step="0.1" /></label>
+                <label>Approaches · m<input id="dem-approach" type="number" step="1" /></label>
+              </div>
+              <p id="dem-length-check" class="hint"></p>
+            </details>
+            <details class="dem-section" open>
+              <summary><b>2</b> Position <small>or drag the bridge on the map</small></summary>
+              <div class="dem-fields">
+                <label>Rotation · ° from north<input id="dem-azimuth" type="number" step="any" inputmode="decimal" /></label>
+                <label>Vertical offset · m<span class="dem-offset"><input id="dem-zoffset" type="number" step="any" inputmode="decimal" /><button id="dem-auto" type="button" title="The road profile meets the ground at both abutments" aria-pressed="true">Auto</button></span></label>
+                <label>East · m<input id="dem-cx" type="number" step="any" inputmode="decimal" /></label>
+                <label>North · m<input id="dem-cy" type="number" step="any" inputmode="decimal" /></label>
+              </div>
+            </details>
+            <details class="dem-section" open>
+              <summary><b>3</b> Site zones <small id="dem-zone-count"></small></summary>
+              <p id="dem-zone-help" class="hint" role="status"></p>
+              <div id="dem-zone-props" class="dem-fields" hidden>
+                <label>Type<select id="dem-zone-type"><option value="" disabled>(several)</option><option value="water">Lake / pond</option><option value="river">River</option><option value="forest">Forest</option><option value="grass">Grass / open ground</option></select></label>
+                <label>Road width · m<input id="dem-zone-width" type="number" min="3" max="40" step="0.5" /></label>
+                <label>Water level · m<input id="dem-zone-level" type="number" step="0.05" placeholder="estimated" /></label>
+              </div>
+              <div class="dem-tools"><button id="dem-zone-delete" type="button" class="danger" disabled>Delete</button><button id="dem-zone-undo" type="button" disabled>Undo</button></div>
+              <div id="dem-zone-draw" class="dem-tools"><span>Draw</span><button type="button" data-draw="river">River</button><button type="button" data-draw="water">Lake</button><button type="button" data-draw="forest">Forest</button><button type="button" data-draw="grass">Grass</button><button type="button" data-draw="road">Road</button></div>
+              <div id="dem-zone-drawing" class="dem-tools" hidden><button id="dem-zone-finish" type="button" class="primary" disabled>Finish</button><button id="dem-zone-cancel" type="button">Cancel</button></div>
+              <button id="dem-save-terrain" type="button" class="text-button">Download this site (.bs3dterrain)</button>
+            </details>
+            <p class="hint" id="dem-info"></p>
           </div>
-          <details class="dem-section" open>
-            <summary>Site zones · edit without a new extraction</summary>
-            <div class="dem-fields">
-              <label>Selected zone<select id="dem-zone-list"><option value="">None</option></select></label>
-              <label>Type<select id="dem-zone-type"><option value="water">Lake / pond</option><option value="river">River</option><option value="forest">Forest</option><option value="grass">Grass / open ground</option><option value="road">Road</option></select></label>
-              <label>Road width · m<input id="dem-zone-width" type="number" min="3" max="40" step="0.5" value="7" /></label>
-              <label>Water level · m absolute (empty = estimated)<input id="dem-zone-level" type="number" step="0.1" /></label>
-            </div>
-            <div class="dem-source"><button id="dem-zone-new" type="button">Draw a zone</button><button id="dem-zone-finish" type="button" disabled>Finish drawing</button><button id="dem-zone-cancel" type="button" disabled>Cancel drawing</button><button id="dem-zone-delete" type="button" disabled>Delete zone</button><button id="dem-zone-undo" type="button" disabled>Undo last zone edit</button></div>
-            <p id="dem-zone-help" class="hint" role="status">Select a zone to drag its vertices. Draw: click on the map, then finish.</p>
-            <div class="dem-fields">
-              <label>Vertex<select id="dem-vertex"></select></label>
-              <label>East · m<input id="dem-vertex-x" type="number" step="any" /></label>
-              <label>North · m<input id="dem-vertex-y" type="number" step="any" /></label>
-            </div>
-            <div class="dem-source"><button id="dem-vertex-add" type="button">Insert a vertex after</button><button id="dem-vertex-delete" type="button">Remove this vertex</button><button id="dem-save-terrain" type="button">Download corrected terrain (.bs3dterrain)</button></div>
-          </details>
-          <p class="hint" id="dem-info"></p>
         </div>
-        <p class="hint">
-          The imported terrain belongs to this browser session only: it is not part of the shared link or the saved
-          .json file, and it is kept here until you remove it.
+        <p class="hint dem-foot">
+          The imported terrain stays in this browser until you remove it. File › Save complete project keeps it with the bridges.
         </p>
         <div class="dialog-actions">
           <button id="dem-remove" type="button" hidden>Remove imported terrain</button>
@@ -1211,6 +1194,15 @@
           Starfield and grass species adapted from CK42BB/procedural-stars-threejs and procedural-grass-threejs (MIT);
           atmosphere after Hillaire 2020 (sebh/UnrealEngineSkyAtmosphere, MIT) and Bruneton 2008 (BSD); Preetham sky
           after Tw1ddle/Sky-Shader and the three.js Sky object (MIT); river details after Noniv/web-ocean (MIT).
+        </p>
+        <h3>Version 0.7.0</h3>
+        <p>
+          Two bridges, each on its own: « Add bridge B » makes an exact copy of bridge A, then the « Bridge A / Bridge B »
+          switch at the top of the panel chooses the one that the whole panel edits. Works with or without an imported
+          terrain. Bridge B is placed by dragging it on a small plan (round handle to turn it). The terrain import is a
+          two-column workspace: the map on the left, where the bridge and the zones are moved directly (click, Shift +
+          drag to frame several, drag to move, Delete, Ctrl + Z), the settings on the right. The meadow grows on every
+          open ground of an imported site, and the satellite image can be taken off and put back.
         </p>
         <h3>Version 0.6.9</h3>
         <p>

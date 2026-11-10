@@ -1,60 +1,84 @@
-// BridgeSketch 3D · 0.6.9: bridge B, a second, independent bridge on the same imported site (twin bridges).
-// config.twin = null | { spacing, shift, turn, width, spans: [m…], material, skew, grade, elevation }.
-// Bridge A is the main configuration. B copies A once (« Add a parallel bridge »), then keeps its own deck width,
-// spans, deck type, skew, grade and profile elevation; every other setting (railings, colours, lanes…) follows A,
-// as the panel says. Placement: B's origin sits `shift` m along A and `spacing` m to the right of A's axis
-// (looking from A's start to its end), turned `turn` degrees clockwise seen from above.
-import { validate } from './geometry.mjs';
+// BridgeSketch 3D · twin bridges: two complete, independent bridges in one scene.
+// 0.6.9 gave bridge B a handful of its own values and borrowed the rest from bridge A. 0.7.0: B is a full configuration.
+// « Add bridge B » copies bridge A once; from then on every parameter of each bridge is its own.
+//
+// config.twin = null | { spacing, shift, turn, role, bridge }
+//   bridge  every bridge parameter of the OTHER bridge (all configuration keys except the scene keys below);
+//   role    which bridge the twin is: 'B' (the main configuration is bridge A) or 'A' (the main configuration is
+//           bridge B, the one being edited). Bridge A always owns the site: its spans define the crossings and, on an
+//           imported terrain, the placement of the pair. swapTwin() exchanges the two, so the whole parameters panel,
+//           the section, the profile and the exports work on either bridge without knowing about the other;
+//   spacing, shift, turn  where the twin sits in the frame of the main bridge: its origin `shift` m along the main axis
+//           and `spacing` m to the right of it (looking from start to end), turned `turn` degrees clockwise from above.
+import { validate, defaults } from './geometry.mjs';
 
 const RAD = Math.PI / 180,
   num = (v, lo, hi, fallback) => (Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Number(v))) : fallback);
-export const twinMaterials = ['concrete', 'steel', 'slab', 'box', 'psbox'];
+// One scene for both bridges: site, sky, light, weather, rendering and traffic display.
+export const SCENE_KEYS = ['version', 'environment', 'terrainMode', 'terrainShape', 'sceneWidth', 'background', 'timeOfDay', 'timeFlow',
+  'seed', 'waterStyle', 'skyMode', 'skyModel', 'renderQuality', 'fog', 'weather', 'bloom', 'birds', 'showTraffic', 'movingTraffic',
+  'trainStyle', 'twin'];
+const pick = (c, keys) => Object.fromEntries(keys.filter(k => Object.hasOwn(c, k)).map(k => [k, structuredClone(c[k])]));
+export const bridgeKeys = () => Object.keys(defaults).filter(k => !SCENE_KEYS.includes(k));
+export const bridgeOf = c => pick(c, bridgeKeys());
+const sceneOf = c => pick(c, SCENE_KEYS.filter(k => k !== 'twin'));
 
-// Sanitized twin, or null. Unknown keys are dropped, numbers clamped; validate() checks B as a whole.
+// Sanitized twin, or null. Throws a readable error naming the bridge when the twin is not buildable.
 export function cleanTwin(t, c) {
   if (!t || typeof t !== 'object' || Array.isArray(t)) return null;
-  const spans = (Array.isArray(t.spans) ? t.spans : c.spans.map(s => s.length))
-    .map(v => num(typeof v === 'object' ? v?.length : v, 10, 150, NaN))
-    .filter(Number.isFinite)
-    .slice(0, 8);
+  const role = t.role === 'A' ? 'A' : 'B';
+  let bridge = t.bridge;
+  if (!bridge || typeof bridge !== 'object') {
+    // 0.6.9 files: B had its own width, spans, deck type, skew, grade and elevation, and followed A for the rest.
+    bridge = { ...bridgeOf(c), name: `${c.name || 'Bridge'} · B`.slice(0, 60) };
+    if (Array.isArray(t.spans) && t.spans.length)
+      bridge.spans = t.spans.slice(0, 8).map((length, i) => ({ ...(c.spans[i] ?? c.spans.at(-1)), length: num(length, 10, 150, 25) }));
+    for (const k of ['width', 'material', 'skew', 'grade', 'elevation']) if (t[k] !== undefined) bridge[k] = t[k];
+    if (t.grade !== undefined && t.grade !== c.grade) bridge.profile = 'constant';
+    if (bridge.width < c.width) delete bridge.laneCount;
+    if (bridge.material === 'box') bridge.girders = bridge.width < 7 ? 1 : 2;
+  }
+  let full;
+  try {
+    full = validate({ ...bridge, ...sceneOf(c), twin: null });
+  } catch (e) {
+    throw Error(`Bridge ${role}: ${e.message}`);
+  }
   return {
-    spacing: num(t.spacing, -200, 200, c.width + 3),
-    shift: num(t.shift, -300, 300, 0),
-    turn: num(t.turn, -45, 45, 0),
-    width: num(t.width, 4, 40, c.width),
-    spans: spans.length ? spans : c.spans.map(s => s.length),
-    material: twinMaterials.includes(t.material) ? t.material : c.material,
-    skew: num(t.skew, -45, 45, c.skew),
-    grade: num(t.grade, -6, 6, c.grade),
-    elevation: num(t.elevation, -30, 60, c.elevation),
+    spacing: num(t.spacing, -400, 400, c.width + 3),
+    shift: num(t.shift, -400, 400, 0),
+    turn: num(t.turn, -90, 90, 0),
+    role,
+    bridge: bridgeOf(full),
   };
 }
 
-// « Add a parallel bridge from bridge A »: explicit one-time copy, 3 m clear between the decks.
+// « Add bridge B »: an exact copy of the main bridge, 3 m clear on its right.
 export function newTwin(c) {
-  return cleanTwin({ spacing: c.width + 3, shift: 0, turn: 0, width: c.width, spans: c.spans.map(s => s.length),
-    material: c.material, skew: c.skew, grade: c.grade, elevation: c.elevation }, c);
+  return { spacing: c.width + 3, shift: 0, turn: 0, role: 'B', bridge: { ...bridgeOf(c), name: `${c.name || 'Bridge'} · B`.slice(0, 60) } };
 }
 
-// Full configuration of bridge B. Throws a readable error (prefixed « Bridge B ») when B is not buildable.
+// Full configuration of the twin (the scene keys come from the main configuration).
 export function twinConfig(c) {
-  const t = c.twin;
-  if (!t) return null;
-  const spans = t.spans.map((length, i) => ({ ...(c.spans[i] ?? c.spans.at(-1)), length }));
-  const raw = { ...structuredClone(c), twin: null, name: `${c.name || 'Bridge'} · B`.slice(0, 60), width: t.width, spans,
-    material: t.material, skew: t.skew, grade: t.grade, elevation: t.elevation,
-    profile: t.grade !== c.grade ? 'constant' : c.profile };
-  // B keeps A's lane count only if its deck is as wide; a narrower deck falls back to the automatic lane count.
-  if (t.width < c.width) delete raw.laneCount;
-  if (t.material === 'box') raw.girders = t.width < 7 ? 1 : 2;
-  try {
-    return validate(raw);
-  } catch (e) {
-    throw Error('Bridge B: ' + e.message);
-  }
+  if (!c.twin) return null;
+  return validate({ ...c.twin.bridge, ...sceneOf(c), twin: null });
 }
 
-// B's local scene frame -> A's scene frame (same convention as THREE rotation.y = -turn).
+// The same pair seen from the other bridge: the twin becomes the main configuration, and the other way round.
+export function swapTwin(c) {
+  const t = c.twin;
+  if (!t) return c;
+  return validate({ ...twinConfig(c), twin: { ...inverseTwin(t), role: t.role === 'A' ? 'B' : 'A', bridge: bridgeOf(c) } });
+}
+// The placement of the main bridge seen from the twin (what `twin` becomes after a swap).
+export function inverseTwin(t) {
+  const [shift, spacing] = aToTwin(t, 0, 0);
+  return { spacing, shift, turn: -t.turn || 0 };
+}
+// Which bridge the main configuration is ('A' without a twin).
+export const mainRole = c => (c.twin?.role === 'A' ? 'B' : 'A');
+
+// Twin's local scene frame -> main scene frame (same convention as THREE rotation.y = -turn).
 export function twinToA(t, x, z) {
   const q = -t.turn * RAD,
     co = Math.cos(q),
@@ -69,7 +93,7 @@ export function aToTwin(t, x, z) {
     dz = z - t.spacing;
   return [dx * co - dz * si, dx * si + dz * co];
 }
-// Placement of B on the packet: origin under (shift, spacing) of A, azimuth turned clockwise, same vertical datum.
+// Placement of the twin on an imported terrain, from the placement of the main bridge (same vertical datum).
 export function twinPlacement(pl, t) {
   const a = pl.azimuth * RAD,
     dE = Math.sin(a),
@@ -81,5 +105,9 @@ export function twinPlacement(pl, t) {
     zOffset: pl.zOffset,
   };
 }
-// Clear distance between two straight parallel decks (negative = they overlap).
+// Clear distance between the two decks, measured square to the main axis at the twin's origin (negative = overlap).
 export const twinClearance = (c, b) => Math.abs(c.twin.spacing) - c.width / 2 - b.width / 2;
+// An imported terrain stores the placement of bridge A. Placement of the main configuration, whichever bridge it is.
+export const mainPlacement = (placementA, c) => (c.twin?.role === 'A' ? twinPlacement(placementA, inverseTwin(c.twin)) : placementA);
+// The pair with bridge A as the main configuration (placement tools always work in A's frame).
+export const pairFromA = c => (c.twin?.role === 'A' ? swapTwin(c) : c);

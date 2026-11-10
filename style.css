@@ -2047,6 +2047,35 @@ body.sketchy-game #canvasHost {
   max-height: calc(100vh - 24px);
   overflow: auto;
 }
+/* 0.7.0: once a terrain is loaded, the dialog is a two-column workspace: map on the left, settings on the right */
+#dem-dialog:has(#dem-place:not([hidden])) { width: min(1240px, calc(100vw - 24px)); }
+.dem-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; margin-top: 8px; }
+.dem-layout[hidden] { display: none; }
+.dem-left { position: sticky; top: 0; min-width: 0; }
+.dem-right { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.dem-right .dem-section { margin: 0; padding: 0; overflow: hidden; }
+.dem-right .dem-section > summary { padding: 9px 12px; background: var(--head-fill); display: flex; align-items: center; gap: 8px; }
+.dem-right .dem-section > summary b { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--navy); color: #fff; font-size: 11px; }
+.dem-right .dem-section > summary small { margin-left: auto; color: var(--muted); font-weight: 400; font-size: 0.72rem; }
+.dem-right .dem-section > :not(summary) { margin: 10px 12px; }
+.dem-right .dem-fields { grid-template-columns: 1fr 1fr; }
+.dem-right .dem-fields label.wide { grid-column: 1 / -1; }
+.dem-right .dem-fields label[hidden] { display: none; }
+#dem-dialog .dem-fields input, #dem-dialog .dem-fields select { min-height: 32px; padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-input); background: var(--paper); font: inherit; color: var(--ink); }
+#dem-dialog .dem-fields input:focus-visible, #dem-dialog .dem-fields select:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.dem-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.dem-seg button.on { border-color: var(--teal); background: #eefaf6; color: var(--teal-ink); font-weight: 650; }
+.dem-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.dem-tools[hidden] { display: none; }
+.dem-tools > span { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-right: 2px; }
+.dem-tools button { padding: 5px 10px; }
+#dem-dialog button.danger:not(:disabled) { color: var(--err-ink); }
+.dem-tips { position: absolute; left: 8px; top: 8px; margin: 0; padding: 3px 8px; border-radius: 5px; background: #102d41cc; color: #fff; font-size: 0.7rem; pointer-events: none; max-width: calc(100% - 16px); }
+.dem-foot { margin-top: 10px; }
+@media (max-width: 900px) {
+  .dem-layout { grid-template-columns: minmax(0, 1fr); }
+  .dem-left { position: static; }
+}
 #dem-dialog h2 {
   margin-top: 0;
 }
@@ -2075,7 +2104,8 @@ body.sketchy-game #canvasHost {
 #dem-map {
   display: block;
   width: 100%;
-  aspect-ratio: 640 / 340;
+  height: min(62vh, 640px);
+  min-height: 300px;
   border-radius: 8px;
   background: #26323a;
   touch-action: none;
@@ -2146,3 +2176,34 @@ body.sketchy-game #canvasHost {
     padding: 16px;
   }
 }
+
+/* 0.7.0: « Bridge A / Bridge B » switch and placement plan of bridge B (modules/twin-ui.mjs) */
+.bridge-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 2px 0 8px; padding: 3px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--head-fill); }
+.bridge-switch button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 34px; padding: 4px 8px; border: 1px solid transparent; border-radius: 7px; background: none; color: var(--ink); font-weight: 650; cursor: pointer; }
+.bridge-switch button b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #dbe5ec; font-size: 12px; }
+.bridge-switch button:hover { background: var(--paper); border-color: var(--line-hover); }
+.bridge-switch button[aria-pressed='true'] { background: var(--navy); border-color: var(--navy); color: #fff; }
+.bridge-switch button[aria-pressed='true'] b { background: #fff; color: var(--navy); }
+#bridge-b[aria-pressed='true'] { background: #a8480a; border-color: #a8480a; }
+#bridge-b[aria-pressed='true'] b { color: #a8480a; }
+.bridge-switch button.add { border: 1px dashed var(--line-hover); color: var(--muted); font-weight: 600; }
+.bridge-switch button.add b { background: none; border: 1px dashed var(--line-hover); }
+body.editing-b .sidebar { box-shadow: inset 4px 0 0 #D55E00; }
+.twin-box { margin: 0 0 10px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--paper); }
+.twin-box > summary { padding: 8px 10px; font-weight: 650; cursor: pointer; }
+.twin-box > summary small { margin-left: 6px; color: var(--muted); font-weight: 400; }
+.twin-box > :not(summary) { margin-left: 10px; margin-right: 10px; }
+.twin-pad { display: block; width: calc(100% - 20px); height: 190px; border: 1px solid var(--line); border-radius: 8px; background: #f7fafb; touch-action: none; }
+.twin-pad.dragging { cursor: grabbing !important; }
+.twin-check { margin-top: 6px; margin-bottom: 8px; font-size: 12.5px; color: var(--teal-ink); }
+.twin-check.warn { color: var(--err-ink); font-weight: 650; }
+.twin-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.twin-fields label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--muted); }
+.twin-fields input { width: 100%; min-width: 0; box-sizing: border-box; min-height: 30px; padding: 4px 7px; border: 1px solid var(--line-strong); border-radius: var(--radius-input); font: inherit; color: var(--ink); }
+.twin-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; margin-bottom: 8px; }
+.twin-actions button { padding: 5px 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--paper); color: var(--ink); font-size: 12px; cursor: pointer; }
+.twin-actions button:hover { border-color: var(--line-hover); background: var(--head-hover); }
+.twin-actions button.danger { color: var(--err-ink); margin-left: auto; }
+.twin-box .hint { margin-bottom: 10px; }
+.dem-image-row { display: flex; align-items: center; gap: 8px; margin: 6px 2px 8px; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+.dem-image-row[hidden] { display: none; }

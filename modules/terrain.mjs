@@ -25,6 +25,13 @@ let twinZone = null;
 export const setTwinZone = f => {
   twinZone = f ?? null;
 };
+// 0.7.0: twin bridges without an imported terrain. The bridge that does not own the site stands on the ground of the one
+// that does: its sampler is the owner's, read through the transform between the two frames.
+const groundOverride = new WeakMap();
+export const setGroundOverride = (c, f) => {
+  if (f) groundOverride.set(c, f);
+  else groundOverride.delete(c);
+};
 // Footing bottom under a support on the imported ground (null on the procedural terrain).
 export const supportEarth = (c, station, abutment) => (activeDem ? demEarth(c, activeDem, station, abutment) : null);
 
@@ -140,6 +147,8 @@ export function roadBed(width, d) {
 
 export function terrainSampler(c) {
   if (activeDem) return demGround(c, activeDem);
+  const borrowed = groundOverride.get(c);
+  if (borrowed) return borrowed;
   const ss = stations(c),
     obstacles = c.spans.flatMap((s, i) =>
       s.obstacle === 'water' ? [] : [crossing(c, (ss[i] + ss[i + 1]) / 2, s.angle, s.width, s.elevation, s.obstacle)],
@@ -661,7 +670,8 @@ function instancedTiles(parent, geometry, material, items, tile, transform, colo
 function importedTerrain(c, m, parent, dem, ground, footprints) {
   const built = buildTerrainGeometry(c, dem, ground);
   let material = c.terrainMode === 'snow' ? m.snow : m.grass;
-  if (dem.texture) {
+  // 0.7.0: the satellite image is optional (dem.showImage): without it the ground is the app's own grass.
+  if (dem.texture && dem.showImage !== false) {
     // The image already carries its own light and shade: toned down so the sun does not wash it out.
     material = new T.MeshStandardMaterial({ map: dem.texture, color: '#ffffff', roughness: 1, metalness: 0 });
     material.userData.ownedMaterial = true;
@@ -1272,8 +1282,9 @@ export function addEnvironment(c, m, parent, fills) {
       seed: c.seed,
       budget: grassBudget[tier] ?? grassBudget.balanced,
       height: grassHeight,
-      occupied: (x, z, margin) => clearGround(x, z, margin) || nearWater(x, z) ||
-        (site?.grasses.length && !site.inGrass(x,z) && grassHeight(x,z) <= terrainHeight(x,z)+0.01),
+      // 0.7.0: the meadow grows on every open ground of an imported site (0.6.9 kept it to the grass zones when the
+      // packet had some): water, roads, supports and the bridges stay clear.
+      occupied: (x, z, margin) => clearGround(x, z, margin) || nearWater(x, z),
       // Wet river banks grow sedges and reeds; 2H:1V slopes and embankments dry bunch grass.
       zone: (x, z) => {
         for (const o of obstacles) {
