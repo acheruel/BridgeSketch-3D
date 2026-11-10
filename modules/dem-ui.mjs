@@ -470,7 +470,7 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
   }
 
   /* ---- pointer interaction ---- */
-  const editor=createZoneEditor({ $, packet:()=>pending?.packet, redraw:()=>pending&&drawMap(), toCanvas, ratio:dpr });
+  const editor=createZoneEditor({ $, packet:()=>pending?.packet, redraw:()=>pending&&drawMap(), toCanvas, ratio:dpr, scale:()=>view.scale });
   const pointer = e => {
     const r = map.getBoundingClientRect();
     return [(e.clientX - r.left) * dpr(), (e.clientY - r.top) * dpr()];
@@ -480,10 +480,15 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     const [x, y] = pointer(e),
       o = outlines(),
       [hx, hy] = toCanvas(...o.handle);
-    if(editor.down(x,y,fromCanvas(x,y))){map.setPointerCapture(e.pointerId);return;}
+    // 0.7.0: one map for everything. Order of a press: zone drawing or vertex, then the bridge (handle, deck), then a
+    // zone under the pointer, then the ground (pan).
+    const p = fromCanvas(x, y);
+    if (editor.downFirst(x, y, p, e)) { map.setPointerCapture(e.pointerId); return; }
     let mode = 'pan';
     if (Math.hypot(x - hx, y - hy) < 14 * dpr()) mode = 'rotate';
-    else if (inPolygon(o.approach, ...fromCanvas(x, y))) mode = 'move';
+    else if (inPolygon(o.deck, ...p)) mode = 'move';
+    else if (editor.downZone(p, e)) { map.setPointerCapture(e.pointerId); return; }
+    else if (inPolygon(o.approach, ...p)) mode = 'move';
     drag = { mode, x, y, view: { ...view }, placement: { ...pending.placement } };
     map.setPointerCapture(e.pointerId);
     map.style.cursor = mode === 'pan' ? 'grabbing' : mode === 'rotate' ? 'crosshair' : 'move';
@@ -496,7 +501,7 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     if (!drag) {
       const o = outlines(),
         [hx, hy] = toCanvas(...o.handle);
-      map.style.cursor = Math.hypot(x - hx, y - hy) < 14 * dpr() ? 'crosshair' : inPolygon(o.approach, ...hover) ? 'move' : 'grab';
+      map.style.cursor = editor.unfinished() ? 'crosshair' : Math.hypot(x - hx, y - hy) < 14 * dpr() ? 'alias' : inPolygon(o.deck, ...hover) ? 'move' : 'grab';
       drawMap();
       return;
     }
@@ -521,6 +526,16 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     drag = null;
     map.style.cursor = 'grab';
   };
+  map.addEventListener('dblclick', e => {
+    if (!pending) return;
+    const [x, y] = pointer(e);
+    if (editor.dbl(x, y, fromCanvas(x, y))) e.preventDefault();
+  });
+  // Delete, Ctrl + Z, Ctrl + A, Enter and Esc act on the zones while no field is being typed in.
+  dialog.addEventListener('keydown', e => {
+    if (!pending || e.target.matches?.('input, select, textarea')) return;
+    if (editor.key(e)) { e.preventDefault(); e.stopPropagation(); }
+  });
   map.addEventListener('pointerup', release);
   map.addEventListener('pointercancel', release);
   map.addEventListener('pointerleave', () => {

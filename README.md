@@ -2,7 +2,7 @@
 
 **Try it online:** [BridgeSketch 3D on GitHub Pages](https://acheruel.github.io/BridgeSketch-3D/)
 
-**A quick visual tool for bridge concepts** · Version 0.6.9 · 8 November 2026 · Anthony Chéruel
+**A quick visual tool for bridge concepts** · Version 0.7.0 · 10 November 2026 · Anthony Chéruel
 
 BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a span arrangement, deck, supports and site, then inspect the result from above, below or along the obstacle being crossed. It runs in the browser from static files, with no account, backend or build step.
 
@@ -18,6 +18,16 @@ BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a
 - **Parameters:** collapsible sections and formulas in numeric fields, such as `=12*3`.
 - **History:** undo and redo with Ctrl+Z / Ctrl+Y.
 - **Files and export:** save and open JSON, share link, PNG snapshot, GLB export and IFC export (2x3, 4, 4.3).
+
+## What's new in 0.7.0
+
+- **Bridge A and bridge B, fully independent:** « Add bridge B » makes an exact copy of bridge A. The **Bridge A / Bridge B** switch at the top of the panel then chooses which bridge the whole panel edits (spans, deck, structure, supports, railings, colours…): changing one never changes the other. Works **with or without an imported terrain**; the site (crossings, terrain, sky, weather) is shared and belongs to bridge A.
+- **Placing bridge B by hand:** a small plan under the switch shows both bridges from above. Drag bridge B to move it, drag its round handle to turn it; the gap between the decks, the shift along A and the angle are also fields. « Swap sides », « Parallel, 3 m apart » and « Copy A again » are one click. The view stays on the same place when you switch bridges.
+- **Terrain import, redone:** a two-column workspace with a large map. On the map: drag the bridge to move it, its round handle to turn it; click a zone to select it, Shift + click to add, Shift + drag to frame several, drag the selection to move it, **Delete** to remove it, **Ctrl + Z** to undo; double-click an edge to add a point, a vertex to remove it. The zone lists and coordinate fields are gone.
+- **Grass everywhere:** on an imported site the meadow of BridgeSketch 3D grows on every open ground (it used to be limited to the grass zones), away from water, roads and the bridges.
+- **Satellite image on or off:** a checkbox under « Imported terrain » takes the satellite image off the ground (the ground becomes the app's grass) and puts it back.
+- **From QuickerAtlas 0.7.4:** water levels measured by LiDAR arrive with the water zones, and the existing bridge is removed from the terrain (continuous ground under it).
+- Files of 0.6.9 with a bridge B open as before. The IFC export and the section drawing show the bridge being edited.
 
 ## What's new in 0.6.9
 

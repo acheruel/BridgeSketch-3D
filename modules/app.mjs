@@ -70,9 +70,9 @@ import { renderSettings, effectiveQuality, setGpuName, stepDownAuto, gpuInfo } f
 import { createHistory } from './history.mjs';
 import { createDemImport, saveOverlay, loadOverlay, clearOverlay } from './dem-ui.mjs';
 import { siteSun, packetToScene } from './terrain-packet.mjs';
-import { roadFootprints, intersectsRoad, setActiveDem, setTwinZone } from './terrain.mjs';
+import { roadFootprints, intersectsRoad, setActiveDem, setTwinZone, setGroundOverride, terrainSampler } from './terrain.mjs';
 import { setGroundPartner } from './dem.mjs';
-import { twinConfig, twinPlacement, twinToA, aToTwin } from './twin.mjs';
+import { twinConfig, twinPlacement, twinToA, aToTwin, swapTwin, mainRole, mainPlacement, pairFromA } from './twin.mjs';
 import { createTwinPanel } from './twin-ui.mjs';
 import {
   isNum,
@@ -112,6 +112,16 @@ let messageTimer,
   driving = null,
   // Test hook (bridgeViewer.freeze): stop ambient animation so automated captures get a still frame.
   frozen = false;
+const lodPoint = new T.Vector3();
+// 0.7.0: demOverlay.placement is the placement of bridge A. The scene is built around the main configuration, which is
+// bridge B while B is being edited: mainDem() gives the same terrain with the placement of that bridge.
+let mainDemMemo = { overlay: null, twin: null, value: null };
+function mainDem(c = config) {
+  if (!demOverlay || c.twin?.role !== 'A') return demOverlay;
+  if (mainDemMemo.overlay !== demOverlay || mainDemMemo.twin !== c.twin)
+    mainDemMemo = { overlay: demOverlay, twin: c.twin, value: { ...demOverlay, placement: mainPlacement(demOverlay.placement, c) } };
+  return mainDemMemo.value;
+}
 let needsRender = true,
   flowTime = 0,
   lastTime = 0,
@@ -151,7 +161,7 @@ const draw = () => {
   if (renderer && !northBadge.parentNode) renderer.domElement.parentNode.appendChild(northBadge);
   northBadge.hidden = !demOverlay;
   if (demOverlay) {
-    const [x, z] = packetToScene({ ...demOverlay.placement, cx: 0, cy: 0 }, 0, 1);
+    const [x, z] = packetToScene({ ...mainDem().placement, cx: 0, cy: 0 }, 0, 1);
     northVector.set(x, 0, z).transformDirection(camera.matrixWorldInverse);
     northBadge.firstElementChild.style.transform = `rotate(${Math.atan2(northVector.x, northVector.y)}rad)`;
   }
@@ -608,7 +618,7 @@ function applyTimeOfDay(hour, flowing = false) {
   if (!scene?.userData.lights) return;
   // Sun from 06:30 to 19:30 (autumn day). Daylight follows the sun elevation, so the evening only gets darker:
   // golden hour when the sun is low (about 18:30–19:30, peak 19:05), then blue hour, then night from 20:00.
-  const solar = siteSun(hour, demOverlay?.placement),
+  const solar = siteSun(hour, mainDem()?.placement),
     elevation = solar.elevation,
     daylight = T.MathUtils.smoothstep(elevation, -0.14, 0.22);
   const golden = Math.exp(-(((elevation - 0.1) / 0.12) ** 2)) * T.MathUtils.smoothstep(elevation, -0.13, 0);
@@ -1161,43 +1171,79 @@ function update(raw, options = {}) {
   });
   return updateQueue;
 }
-// 0.6.9: bridge B (config.twin) on the imported site. B is built first, without a site of its own: its footprint then
-// keeps A's imported roads, trees and grass off its deck and approaches, and both grounds carry both approach cuts.
+// 0.7.0: two independent bridges (config.twin, see twin.mjs), with or without an imported terrain. The main configuration
+// stands at the scene origin; the twin is placed relative to it. Bridge A owns the site (crossings, terrain, vegetation):
+// it is the main configuration, or the twin while bridge B is being edited. The other bridge is built first, without a
+// site: its footprint keeps the site's roads, trees and grass off its deck and approaches, and it stands on the same ground.
 function buildPair(next) {
-  const t = next.twin,
-    cB = t && demOverlay ? twinConfig(next) : null;
+  const t = next.twin;
   setTwinZone(null);
-  if (!cB) return buildBridge(next, materials, { dem: demOverlay });
-  const demB = { packet: demOverlay.packet, placement: twinPlacement(demOverlay.placement, t) };
-  setGroundPartner(next, { c: cB, dem: demB, to: (x, z) => aToTwin(t, x, z) });
-  setGroundPartner(cB, { c: next, dem: demOverlay, to: (x, z) => twinToA(t, x, z) });
-  let b = null, a;
+  if (!t) return buildBridge(next, materials, { dem: demOverlay });
+  const dm = mainDem(next),
+    other = twinConfig(next),
+    mainOwns = t.role !== 'A',
+    toTwin = (x, z) => aToTwin(t, x, z),
+    toMain = (x, z) => twinToA(t, x, z),
+    demTwin = dm ? { ...dm, placement: twinPlacement(dm.placement, t) } : null,
+    siteCfg = mainOwns ? next : other,
+    guestCfg = mainOwns ? other : next,
+    siteDem = mainOwns ? dm : demTwin,
+    guestDem = mainOwns ? demTwin : dm,
+    siteToGuest = mainOwns ? toTwin : toMain,
+    guestToSite = mainOwns ? toMain : toTwin;
+  if (dm) {
+    setGroundPartner(siteCfg, { c: guestCfg, dem: guestDem, to: siteToGuest });
+    setGroundPartner(guestCfg, { c: siteCfg, dem: siteDem, to: guestToSite });
+  } else {
+    let siteGround = null;
+    setGroundOverride(guestCfg, (x, z) => {
+      const [u, v] = guestToSite(x, z);
+      return (siteGround ??= terrainSampler(siteCfg))(u, v);
+    });
+  }
+  let guest = null,
+    site;
   try {
-    b = buildBridge(cB, materials, { site: false, lights: true, fills: true, dem: demB });
-    const zones = roadFootprints(cB);
+    guest = buildBridge(guestCfg, materials, { site: false, lights: true, fills: true, dem: guestDem });
+    const zones = roadFootprints(guestCfg);
     setTwinZone((x, z, margin = 0) => {
-      const [u, v] = aToTwin(t, x, z);
+      const [u, v] = siteToGuest(x, z);
       return intersectsRoad(zones, u, v, margin);
     });
-    a = buildBridge(next, materials, { dem: demOverlay });
+    site = buildBridge(siteCfg, materials, { dem: siteDem });
   } catch (e) {
-    if (b) disposeModel(b);
+    if (guest) disposeModel(guest);
     setTwinZone(null);
-    setActiveDem(demOverlay);
+    setActiveDem(dm);
     throw e;
   }
-  b.root.name = 'Bridge B';
-  b.root.position.set(t.shift, 0, t.spacing);
-  b.root.rotation.y = (-t.turn * Math.PI) / 180;
-  a.root.add(b.root);
-  a.vehicles.push(...b.vehicles);
-  const la = a.lighting, lb = b.lighting;
-  if (lb)
-    a.lighting = la
-      ? { ...la, setOn: on => (la.setOn(on), lb.setOn(on)), setHidden: h => (la.setHidden?.(h), lb.setHidden?.(h)), dispose: () => (la.dispose(), lb.dispose()) }
-      : lb;
-  a.twin = b;
-  return a;
+  setActiveDem(dm);
+  const main = mainOwns ? site : guest,
+    twin = mainOwns ? guest : site,
+    root = new T.Group();
+  main.root.name = `Bridge ${mainOwns ? 'A' : 'B'}`;
+  twin.root.name = `Bridge ${t.role}`;
+  twin.root.position.set(t.shift, 0, t.spacing);
+  twin.root.rotation.y = (-t.turn * Math.PI) / 180;
+  root.add(main.root, twin.root);
+  root.updateMatrixWorld(true);
+  const la = main.lighting,
+    lb = twin.lighting,
+    both = [la, lb].filter(Boolean);
+  return {
+    ...main,
+    root,
+    setting: site.setting,
+    waters: site.waters,
+    imported: site.imported,
+    vehicles: [...main.vehicles, ...twin.vehicles],
+    lighting: both.length
+      ? { ...both[0], setOn: on => both.forEach(l => l.setOn(on)), setHidden: h => both.forEach(l => l.setHidden?.(h)), dispose: () => both.forEach(l => l.dispose()) }
+      : null,
+    twin,
+    // Scene frame -> frame of the site (tree level of detail works in the site's own coordinates).
+    toSite: mainOwns ? null : site.root.matrixWorld.clone().invert(),
+  };
 }
 function rebuild(raw, { resetCamera = false, refresh = false, noHistory = false, editKey = null, baseline = false } = {}) {
   stopDriving();
@@ -1207,6 +1253,17 @@ function rebuild(raw, { resetCamera = false, refresh = false, noHistory = false,
   if (model) {
     scene.remove(model.root);
     disposeModel(model);
+  }
+  // 0.7.0: the scene frame follows the bridge being edited. When that bridge changes (switch, undo, redo), the camera is
+  // moved by the same transform, so the view stays on the same place of the site.
+  if (config.twin && next.twin && mainRole(config) !== mainRole(next) && camera && controls) {
+    const t = config.twin;
+    for (const v of [camera.position, controls.target]) {
+      const [x, z] = aToTwin(t, v.x, v.z);
+      v.x = x;
+      v.z = z;
+    }
+    controls.update();
   }
   config = next;
   model = replacement;
@@ -1676,8 +1733,9 @@ async function boot() {
   try {
     const saved = await loadOverlay();
     if (saved && ['cx', 'cy', 'azimuth', 'zOffset'].every(k => Number.isFinite(saved.placement?.[k]))) {
-      demOverlay = { packet: saved.packet, placement: saved.placement, texture: await demTexture(saved.packet) };
+      demOverlay = { packet: saved.packet, placement: saved.placement, texture: await demTexture(saved.packet), showImage: demImageOn() };
       demImport.refreshButton();
+      syncDemImage();
       $('save-project').disabled = false;
     }
   } catch (e) {
@@ -1810,7 +1868,7 @@ async function boot() {
       needsRender = true;
     }
     // Tree levels of detail follow the camera (re-sorted after 2 m of travel); a swap refreshes the shadows at 2 Hz.
-    if (model.setting.userData.treeLod?.(camera.position)) shadowSoft = true;
+    if (model.setting.userData.treeLod?.(model.toSite ? lodPoint.copy(camera.position).applyMatrix4(model.toSite) : camera.position)) shadowSoft = true;
     const key = camera.matrixWorld.elements.map(v => v.toFixed(3)).join(),
       cameraMoved = key !== cameraKey;
     cameraKey = key;
@@ -2557,11 +2615,34 @@ async function demTexture(packet) {
     return null;
   }
 }
+// 0.7.0: satellite image on the imported terrain, on or off (a display choice kept in this browser).
+function demImageOn() {
+  try {
+    return localStorage.getItem('bs3d-dem-image') !== 'off';
+  } catch {
+    return true;
+  }
+}
+function syncDemImage() {
+  $('dem-image-row').hidden = !demOverlay?.texture;
+  $('dem-image').checked = demOverlay?.showImage !== false;
+}
+$('dem-image').addEventListener('change', async e => {
+  e.stopPropagation();
+  if (!demOverlay) return;
+  const on = e.target.checked;
+  try {
+    localStorage.setItem('bs3d-dem-image', on ? 'on' : 'off');
+  } catch {}
+  demOverlay = { ...demOverlay, showImage: on };
+  await update(config, { noHistory: true });
+  notify(on ? 'Satellite image back on the terrain.' : 'Satellite image off: the ground is the grass of BridgeSketch 3D.');
+});
 async function setDem(data) {
   const previous = demOverlay,
     previousConfig = config,
     texture = data ? await demTexture(data.packet) : null;
-  demOverlay = data ? { packet: data.packet, placement: data.placement, texture } : null;
+  demOverlay = data ? { packet: data.packet, placement: data.placement, texture, showImage: demImageOn() } : null;
   try {
     await update(data?.config ?? config, { refresh: true, resetCamera: true, noHistory: true });
   } catch (e) {
@@ -2574,13 +2655,14 @@ async function setDem(data) {
   if (data) await saveOverlay({ packet: data.packet, placement: data.placement });
   else await clearOverlay();
   demImport.refreshButton();
+  syncDemImage();
   $('save-project').disabled = !demOverlay;
   twinPanel?.refresh();
 }
 async function importDem(raw, placement) {
   const { validatePacket, autoPlacement } = await import('./terrain-packet.mjs'),
     packet = validatePacket(raw);
-  await setDem({ packet, placement: placement ?? autoPlacement(packet, config) });
+  await setDem({ packet, placement: placement ?? autoPlacement(packet, pairFromA(config)) });
   notify('Terrain imported. Move or turn the bridge from « Imported terrain ».');
 }
 async function removeDem() {
@@ -2589,7 +2671,8 @@ async function removeDem() {
 }
 const demImport = createDemImport({
   $,
-  getConfig: () => config,
+  // The terrain dialog places bridge A (the site owner), whichever bridge is being edited.
+  getConfig: () => pairFromA(config),
   getOverlay: () => demOverlay,
   apply: async data => {
     await setDem(data);
@@ -2598,7 +2681,12 @@ const demImport = createDemImport({
   remove: removeDem,
   notify,
 });
-twinPanel = createTwinPanel({ $, getConfig: () => config, hasSite: () => !!demOverlay, update, notify });
+// 0.7.0: « Bridge A / Bridge B »: the same scene seen from the other bridge. The camera keeps looking at the same place.
+async function switchBridge(role) {
+  if (!config.twin || mainRole(config) === role) return;
+  await update(swapTwin(config), { refresh: true, editKey: 'bridge-switch' });
+}
+twinPanel = createTwinPanel({ $, getConfig: () => config, update, notify, switchBridge });
 twinPanel.refresh();
 // QuickerAtlas can also open this page with #terrain-import and wait for { type: 'bs3d-ready' } before sending.
 const terrainHash = location.hash === '#terrain-import';
