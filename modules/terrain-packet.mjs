@@ -115,7 +115,9 @@ export function validatePacket(p) {
     if (z.type === 'river' || z.type === 'water' || z.type === 'forest' || z.type === 'grass') {
       if (Array.isArray(z.polygon) && z.polygon.length >= 3 && z.polygon.every(pt))
         zones.push({ type: z.type, source: z.source ?? 'user', polygon: z.polygon.map(q => [q[0], q[1]]),
-          ...(['water','river'].includes(z.type) && finite(z.level) ? {level:z.level} : {}) });
+          ...(['water','river'].includes(z.type) && finite(z.level) ? {level:z.level} : {}),
+          // 0.7.1: vegetation density of a forest or grass zone (1 = default, 0.25 to 3).
+          ...(['forest','grass'].includes(z.type) && finite(z.density) && z.density !== 1 ? { density: Math.min(3, Math.max(0.25, z.density)) } : {}) });
     } else if (z.type === 'road') {
       if (Array.isArray(z.line) && z.line.length >= 2 && z.line.every(pt))
         zones.push({
@@ -127,6 +129,11 @@ export function validatePacket(p) {
           ...(finite(z.lanes) && z.lanes >= 1 ? { lanes: Math.min(8, Math.round(z.lanes)) } : {}),
           ...(z.oneway === 1 || z.oneway === -1 ? { oneway: z.oneway } : {}),
           ...(z.bridge === true ? { bridge: true } : {}),
+          // 0.7.1: per road: no traffic, W-beam guardrails (left / right of the drawing direction, or both), and
+          // `link: false` to keep a road from continuing a bridge approach. Absent = traffic, no guardrail, may link.
+          ...(z.traffic === false ? { traffic: false } : {}),
+          ...(['left', 'right', 'both'].includes(z.barriers) ? { barriers: z.barriers } : {}),
+          ...(z.link === false ? { link: false } : {}),
         });
     }
   }
@@ -140,7 +147,10 @@ export function validatePacket(p) {
     source: String(p.source ?? ''),
     created: String(p.created ?? ''),
     center: p.center ? { lat: p.center.lat, lon: p.center.lon } : null,
-    grid: { cols: g.cols, rows: g.rows, cell: g.cell, x0: g.x0, y0: g.y0 },
+    // 0.7.1: `rotation` (degrees clockwise) = compass bearing of the grid's y axis, for a block that QuickerAtlas turned.
+    // The packet frame is the block's own (x along its width, y along its height); only the north arrow and the bearing
+    // shown to the user depend on it.
+    grid: { cols: g.cols, rows: g.rows, cell: g.cell, x0: g.x0, y0: g.y0, ...(finite(g.rotation) && g.rotation % 360 ? { rotation: ((g.rotation % 360) + 360) % 360 } : {}) },
     mnt,
     mns,
     image,

@@ -100,7 +100,7 @@ export function makeMaterials(onLoad = () => {}) {
       ['grass', 'meadow-v2.webp', 1.6, ''],
     ]) {
       m[key].map = load(file, true);
-      m[key].color.set(key === 'grass' ? '#dce7c9' : key === 'concrete' ? '#f0f0ed' : '#687176');
+      m[key].color.set(key === 'grass' ? '#ab9caa' /* 0.7.1: darker, olive grass: with the meadow texture it renders close to the grass of the satellite imagery (about rgb 90 101 64); was #dce7c9 */ : key === 'concrete' ? '#f0f0ed' : '#687176');
       m[key].userData.textureMetres = size;
       if (normal) {
         m[key].normalMap = load(normal);

@@ -72,6 +72,26 @@ export function positionVehicle(group, c) {
     group.rotation.set(-Math.atan(right.y-left.y)*dir,-Math.atan2(p.tz,p.tx)+(forward?0:Math.PI),Math.atan2(b.y-a.y,Math.hypot(b.x-a.x,b.z-a.z))*dir);
     group.visible=Math.abs(s)<=road.halfLength-halfLength;return;
   }
+  // 0.7.1: past the end of an approach that continues along a drawn road (route.ext, see demLinks), the vehicle follows
+  // that road: same lane offset u, the level and heading of the link.
+  const ext = group.userData.route.ext;
+  if (ext && !road) {
+    const reach = c.approach + 18,
+      L = totalLength(c),
+      link = s < -reach ? ext.start : s > L + reach ? ext.end : null;
+    if (link) {
+      const at = q => link.sample(q < 0 ? -reach - q : q - L - reach, u),
+        p = at(s),
+        a = at(s - 0.5),
+        b = at(s + 0.5),
+        dir = forward ? 1 : -1;
+      group.position.set(p.x, p.y + 0.025 + verticalOffset, p.z);
+      group.rotation.order = 'YZX';
+      group.rotation.set(group.userData.roll ?? 0, -Math.atan2(p.tz, p.tx) + (forward ? 0 : Math.PI), Math.atan2(b.y - a.y, Math.hypot(b.x - a.x, b.z - a.z) || 1) * dir);
+      group.visible = (s < 0 ? -reach - s : s - L - reach) <= link.length - halfLength;
+      return;
+    }
+  }
   // Bank the body onto the crossfall (about the 1.8 m axle track) so the wheels sit flush on the deck instead of
   // floating on the low side; trains and flat carriageways stay level. Constant for a vehicle, so computed once.
   if (group.userData.roll === undefined) {
@@ -99,7 +119,10 @@ export function positionVehicle(group, c) {
     ? group.userData.route.type !== 'train' || Math.abs(s) <= road.halfLength + halfLength
     : path
       ? s >= -c.approach - 17 && s <= totalLength(c) + c.approach + 17
-      : vehicleFits(c, s, u, halfLength, halfWidth);
+      : vehicleFits(c, s, u, halfLength, halfWidth) ||
+        // 0.7.1: no blink where the approach hands over to its continuation
+        (!!ext?.start && s < 0 && s >= -c.approach - 18) ||
+        (!!ext?.end && s > totalLength(c) && s <= totalLength(c) + c.approach + 18);
 }
 
 export function animateTraffic(model, dt) {
@@ -113,8 +136,10 @@ export function animateTraffic(model, dt) {
         ? r.road.halfLength + (r.type === 'train' ? r.halfLength : -r.halfLength)
         : c.approach + 17 - r.halfLength;
     const gap = r.offscreenGap ?? 0,
-      start = -reach - (r.forward ? 0 : gap),
-      end = r.road ? reach + (r.forward ? gap : 0) : totalLength(c) + reach,
+      // 0.7.1: deck traffic runs to the far end of the roads that continue the approaches
+      more = (link, plain) => (!r.road && link ? c.approach + 18 + link.length - r.halfLength : plain),
+      start = r.road ? -reach - (r.forward ? 0 : gap) : -more(r.ext?.start, reach),
+      end = r.road ? reach + (r.forward ? gap : 0) : totalLength(c) + more(r.ext?.end, reach),
       range = end - start;
     if (range <= 0) continue;
     // Equal speeds preserve spacing in each lane; traffic wraps at the scenery edge.

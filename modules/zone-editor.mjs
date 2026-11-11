@@ -70,6 +70,26 @@ export function createZoneEditor({ $, packet, redraw, toCanvas, ratio, scale }) 
     if (roads.length) width.value = roads.every(q => q.width === roads[0].width) ? roads[0].width : '';
     level.closest('label').hidden = !(z && ['water', 'river'].includes(z.type));
     if (z) level.value = z.level ?? '';
+    // 0.7.1: road attributes (one or several roads) and the density of forest / grass zones.
+    const allRoads = n && roads.length === n,
+      same = (key, fallback) => (roads.every(q => (q[key] ?? fallback) === (roads[0][key] ?? fallback)) ? roads[0][key] ?? fallback : null),
+      green = sel.filter(q => q.type === 'forest' || q.type === 'grass');
+    for (const id of ['lanes', 'oneway', 'barriers', 'traffic', 'link']) $('dem-zone-' + id).closest('label').hidden = !allRoads;
+    if (allRoads) {
+      $('dem-zone-lanes').value = same('lanes', '') ?? '';
+      $('dem-zone-oneway').value = same('oneway', 0) ?? 0;
+      $('dem-zone-barriers').value = same('barriers', '') ?? '';
+      $('dem-zone-traffic').checked = same('traffic', true) !== false;
+      $('dem-zone-traffic').indeterminate = same('traffic', true) === null;
+      $('dem-zone-link').checked = same('link', true) !== false;
+      $('dem-zone-link').indeterminate = same('link', true) === null;
+    }
+    $('dem-zone-density').closest('label').hidden = !(n && green.length === n);
+    if (green.length) {
+      const d = green.every(q => (q.density ?? 1) === (green[0].density ?? 1)) ? green[0].density ?? 1 : 1;
+      $('dem-zone-density').value = d;
+      $('dem-zone-density-out').textContent = d + ' ×';
+    }
     $('dem-zone-delete').disabled = !n || !!drawing;
     $('dem-zone-delete').textContent = n > 1 ? `Delete ${n} zones` : 'Delete';
     $('dem-zone-undo').disabled = !history.length || !!drawing;
@@ -140,6 +160,7 @@ export function createZoneEditor({ $, packet, redraw, toCanvas, ratio, scale }) 
         z.type = v;
         z.source = 'user';
         if (!['water', 'river'].includes(v)) delete z.level;
+        if (!['forest', 'grass'].includes(v)) delete z.density;
       }
     refresh();
   };
@@ -152,6 +173,37 @@ export function createZoneEditor({ $, packet, redraw, toCanvas, ratio, scale }) 
         z.width = v;
         z.source = 'user';
       }
+    refresh();
+  };
+  // 0.7.1: one handler per road attribute; an absent key means the default (traffic, no guardrail, may link, auto lanes).
+  const roadAttribute = (id, apply) => {
+    $('dem-zone-' + id).onchange = () => {
+      const list = [...selected].filter(z => z.line);
+      if (!list.length) return;
+      remember();
+      for (const z of list) {
+        apply(z, $('dem-zone-' + id));
+        z.source = 'user';
+      }
+      refresh();
+    };
+  };
+  roadAttribute('lanes', (z, f) => (f.value ? (z.lanes = Number(f.value)) : delete z.lanes));
+  roadAttribute('oneway', (z, f) => (Number(f.value) ? (z.oneway = Number(f.value)) : delete z.oneway));
+  roadAttribute('barriers', (z, f) => (f.value ? (z.barriers = f.value) : delete z.barriers));
+  roadAttribute('traffic', (z, f) => (f.checked ? delete z.traffic : (z.traffic = false)));
+  roadAttribute('link', (z, f) => (f.checked ? delete z.link : (z.link = false)));
+  $('dem-zone-density').oninput = () => ($('dem-zone-density-out').textContent = $('dem-zone-density').value + ' ×');
+  $('dem-zone-density').onchange = () => {
+    const list = [...selected].filter(z => z.type === 'forest' || z.type === 'grass'),
+      v = Number($('dem-zone-density').value);
+    if (!list.length || !Number.isFinite(v)) return;
+    remember();
+    for (const z of list) {
+      if (v === 1) delete z.density;
+      else z.density = v;
+      z.source = 'user';
+    }
     refresh();
   };
   $('dem-zone-level').onchange = () => {

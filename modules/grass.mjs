@@ -94,9 +94,10 @@ const SPECIES = {
     width: 0.02,
     bend: [0.1, 0.26],
     spread: 0.1,
-    root: '#3f5f26',
-    mid: '#739a3c',
-    tip: '#c6d07a',
+    // 0.7.1: darker blades, to match the darker ground
+    root: '#33471f',
+    mid: '#566b34',
+    tip: '#8f9a5c',
     straw: 0.25,
   },
   tall: {
@@ -105,9 +106,9 @@ const SPECIES = {
     width: 0.016,
     bend: [0.05, 0.16],
     spread: 0.14,
-    root: '#2f4f2a',
-    mid: '#5d8246',
-    tip: '#9fb56a',
+    root: '#2a4324',
+    mid: '#4d6a3a',
+    tip: '#7f9258',
     straw: 0.15,
     cattails: 1,
   },
@@ -117,9 +118,9 @@ const SPECIES = {
     width: 0.018,
     bend: [0.14, 0.34],
     spread: 0.12,
-    root: '#5c6a33',
-    mid: '#9aa35a',
-    tip: '#e2cf8c',
+    root: '#4f5a2e',
+    mid: '#7d8650',
+    tip: '#b5aa74',
     straw: 0.7,
   },
 };
@@ -249,16 +250,31 @@ function valueNoise(seed) {
 }
 
 // Budgeted placement: dense near the bridge and in clumps, thinner towards the diorama edge.
-export function scatterMeadow({ extent, halfZ, rng, occupied, height, budget, seed = 1, zone = () => 'meadow' }) {
+// 0.7.1: density(x, z) thins or thickens the meadow (grass zones of an imported site); `hot` = [{ x0, z0, x1, z1, weight }]
+// boxes of the dense zones, drawn more often than the rest of the site (share = `hotShare` of the candidates).
+export function scatterMeadow({ extent, halfZ, rng, occupied, height, budget, seed = 1, zone = () => 'meadow', density = null, hot = [], hotShare = 0 }) {
   const noise = valueNoise(seed),
     items = [],
     flowers = [],
     attempts = budget * 6;
+  const hotTotal = hot.reduce((a, b) => a + b.weight, 0);
   for (let i = 0; i < attempts && items.length < budget; i++) {
-    const x = (rng() - 0.5) * (extent - 3),
+    let x, z, dense = 1, inHot = false;
+    if (hotTotal && rng() < hotShare) {
+      let pick = rng() * hotTotal,
+        k = 0;
+      while (k < hot.length - 1 && pick > hot[k].weight) pick -= hot[k++].weight;
+      x = hot[k].x0 + rng() * (hot[k].x1 - hot[k].x0);
+      z = hot[k].z0 + rng() * (hot[k].z1 - hot[k].z0);
+      if (density(x, z) <= 1) continue;
+      inHot = true;
+    } else {
+      x = (rng() - 0.5) * (extent - 3);
       z = (rng() - 0.5) * (2 * halfZ - 3);
+      if (density) dense = Math.min(1, density(x, z));
+    }
     const r = Math.hypot(x / (extent / 2), z / halfZ),
-      focus = 1 - 0.62 * Math.min(1, Math.max(0, (r - 0.35) / 0.65));
+      focus = inHot ? 1 : dense * (1 - 0.62 * Math.min(1, Math.max(0, (r - 0.35) / 0.65)));
     const clump =
       0.35 +
       0.65 * Math.min(1, Math.max(0, noise(x * 0.09, z * 0.09) * 1.25 + noise(x * 0.31, z * 0.31) * 0.35 - 0.25));

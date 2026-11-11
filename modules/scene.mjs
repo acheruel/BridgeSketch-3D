@@ -48,6 +48,7 @@ import {
 } from './geometry.mjs';
 import { addArch, addPsbox, addStrutLeg, addTruss } from './systems.mjs';
 import { addEnvironment, addFills, approachSurfaces, frontSlopeFit, getActiveDem, setActiveDem, supportEarth, terrainSampler } from './terrain.mjs';
+import { buildLinks, demSite } from './dem.mjs';
 import {
   beam,
   box,
@@ -90,12 +91,30 @@ export function laneSpeed(c, lane, type = 'sedan') {
   return 30 * (1 + 0.15 * rank);
 }
 
+// 0.7.1: traffic of bridge number `variant` (0 = the first bridge, unchanged). Deterministic: same seed, same traffic.
+export function trafficVariant(variant, seed, span, lane) {
+  if (!variant) return { kind: 0, at: null, skip: false, speed: 1 };
+  const h = n => {
+    const v = Math.sin((seed + 1) * 12.9898 + variant * 78.233 + n * 37.719) * 43758.5453;
+    return v - Math.floor(v);
+  };
+  const laneRoll = h(lane * 7 + 1);
+  return {
+    kind: 3 + Math.floor(h(span * 13 + lane * 5 + 2) * 7),
+    at: 0.15 + 0.7 * h(span * 17 + lane * 3 + 3),
+    // never an empty bridge: the first lane of the first span always keeps its vehicle
+    skip: (span > 0 || lane > 0) && h(span * 11 + lane * 19 + 4) < 0.25,
+    speed: (laneRoll < 0.5 ? 0.78 + 0.14 * laneRoll * 2 : 1.08 + 0.14 * (laneRoll - 0.5) * 2),
+  };
+}
+
 // site: false leaves out the terrain, water, vegetation and lighting (the IFC export needs the bridge only).
 // 0.6.8: lights: true keeps the street lights and handrail LEDs of a site-less build (the IFC export lists them).
 // 0.6.8: `dem` ({ packet, placement, texture? }, see dem.mjs) puts the bridge on an imported terrain: ground height,
 // approach fills, footings and the whole site then follow the DTM. Omitted (undefined) keeps the previous setting, null
 // goes back to the procedural terrain; the app always passes it.
-export function buildBridge(c, m, { batch = true, site = true, lights = site, dem, fills: ownFills = false } = {}) {
+// 0.7.1: `variant` (1 for bridge B) gives a second bridge its own traffic: other vehicles, positions, speeds and gaps.
+export function buildBridge(c, m, { batch = true, site = true, lights = site, dem, fills: ownFills = false, variant = 0 } = {}) {
   if (dem !== undefined) setActiveDem(dem);
   const imported = dem === undefined ? !!getActiveDem() : !!dem;
   const preview = approachSurfaces(c),
@@ -425,12 +444,16 @@ export function buildBridge(c, m, { batch = true, site = true, lights = site, de
     }
     if (c.showTraffic) {
       layout.laneCenters.forEach((u, lane) => {
-        const type =
+        // 0.7.1: a second bridge (variant) never mirrors the first one: other vehicle kinds, another place in the span,
+        // one vehicle in four left out, and a lane speed 8 to 22 % apart (one speed per lane keeps the spacing).
+        const pick = trafficVariant(variant, c.seed, i, lane),
+          type =
             c.trafficMode === 'cyclists'
               ? 'cyclist'
-              : trafficKind(i * c.laneCount + lane + c.seed),
-          s = a + (b - a) * (lane % 2 ? 0.65 : 0.35);
-        vehicle(deck, m, c, s, u, type, laneForward(c, lane), undefined, { speed: laneSpeed(c, lane, type) });
+              : trafficKind(i * c.laneCount + lane + c.seed + pick.kind),
+          s = a + (b - a) * (pick.at ?? (lane % 2 ? 0.65 : 0.35));
+        if (pick.skip) return;
+        vehicle(deck, m, c, s, u, type, laneForward(c, lane), undefined, { speed: laneSpeed(c, lane, type) * pick.speed });
       });
       // 0.6.6: a cyclist rides every sidewalk by default (the right-hand direction on each side).
       if (c.trafficMode !== 'cyclists')
@@ -600,9 +623,11 @@ export function buildBridge(c, m, { batch = true, site = true, lights = site, de
               c,
               Math.min(s, end),
               Math.max(s, end),
-              chamferSection(rect(u - 0.225, u + 0.225, 0, earth)),
+              // 0.7.1: nominal 10 m section (top v = 0, bottom v = -10). The section used to end at v = earth and told top
+              // from bottom by the sign: with the ground above y = 0 (imported terrain) the wall turned inside out, flat.
+              chamferSection(rect(u - 0.225, u + 0.225, 0, -10)),
               m.concrete,
-              (_, station, v) => (v > earth + 0.1 ? profile(c, station) - 0.17 : 0),
+              (_, station, v) => (v > -5 ? profile(c, station) - 0.17 : earth + 10),
               Math.ceil(length),
             );
           wall.name = `Return wall ${j === 0 ? 'start' : 'end'} ${side < 0 ? 'left' : 'right'}`;
@@ -1136,6 +1161,17 @@ export function buildBridge(c, m, { batch = true, site = true, lights = site, de
   const waters = site ? addEnvironment(c, m, setting, fills) : [];
   // 0.6.9: bridge B keeps its own approach fills on the terrain built by bridge A.
   if (!site && ownFills) addFills(m, setting, fills, c.terrainMode === 'snow' ? m.snow : m.grass);
+  // 0.7.1: on an imported site, a drawn road that passes the end of an approach continues it: same width, crossfall,
+  // markings, and the deck traffic drives on (route.ext). Site builds and bridge B only (the IFC export has no site).
+  let links = null;
+  const D = imported && (site || ownFills) ? getActiveDem() : null;
+  if (D && demSite(D).roadStrips.length) {
+    const base = c.laneCount ? m.asphalt : m.concrete,
+      pavement = new T.MeshStandardMaterial({ color: base.color, map: base.map, normalMap: base.normalMap, roughness: base.roughness, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    pavement.userData.ownedMaterial = true;
+    links = buildLinks(c, D, terrainSampler(c), { road: pavement, shoulder: m.earth }, setting, layout);
+    if (!links.any) pavement.dispose();
+  }
   // Water marks on piers standing in the (first) river.
   const stain = m.concrete.userData.stain;
   if (stain) {
@@ -1153,6 +1189,11 @@ export function buildBridge(c, m, { batch = true, site = true, lights = site, de
     lighting.setOn(false);
   }
   const vehicles = [deck, setting].flatMap(group => group.children.find(o => o.name === 'Traffic')?.children ?? []);
+  if (links?.any)
+    for (const v of vehicles) {
+      const r = v.userData.route;
+      if (!r.road && !r.path && r.type !== 'train') r.ext = links;
+    }
   if (batch) {
     for (const vehicle of vehicles) batchMeshes(vehicle);
     for (const group of [deck, haunches, structure, setting]) batchMeshes(group);
@@ -1169,6 +1210,7 @@ export function buildBridge(c, m, { batch = true, site = true, lights = site, de
     traffic: deck.children.find(o => o.name === 'Traffic'),
     config: c,
     imported,
+    links,
   };
 }
 

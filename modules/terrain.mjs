@@ -11,7 +11,7 @@ import { tuftGeometry, flowerGeometry, scatterMeadow, grassBudget, grassKinds } 
 import { addShrubs, addTrees } from './trees.mjs';
 import { effectiveQuality, renderSettings } from './quality.mjs';
 import { RAIL_BED } from './geometry.mjs';
-import { buildRoads, buildSkirt, buildTerrainGeometry, buildWater, demEarth, demFloor, demGround, demKey, demSite, roadDistance, scatterForest } from './dem.mjs';
+import { buildRoads, buildSkirt, buildTerrainGeometry, buildWater, demEarth, demFloor, demGround, demKey, demLinks, demSite, roadDistance, scatterForest } from './dem.mjs';
 
 // 0.6.8: imported terrain (DTM/DSM from QuickerAtlas) as a session overlay. Set by buildBridge from its `dem` option; while
 // set, terrainSampler returns the DTM with the bridge corridor carved out, and addEnvironment builds the imported site.
@@ -484,6 +484,9 @@ export function roadFootprints(c, fills = approachSurfaces(c), includeBridge = t
       maxZ: Math.max(...p.map(v => v.z)),
     });
   }
+  // 0.7.1: on an imported site, the roads that continue the approaches belong to the bridge footprint (scenery, grass
+  // and the site's own road ribbons keep off them).
+  if (activeDem && includeBridge && demSite(activeDem).roadStrips.length) polygons.push(...demLinks(c, activeDem).footprints());
   return polygons;
 }
 
@@ -714,17 +717,29 @@ function importedTerrain(c, m, parent, dem, ground, footprints) {
     polygonOffsetUnits: -2,
   });
   road.userData.ownedMaterial = true;
-  const roads=buildRoads(c, dem, ground, road, parent, (x, z) => intersectsRoad(footprints, x, z, 2) || !!twinZone?.(x, z, 2));
+  const roads = buildRoads(c, dem, ground, { road, shoulder: m.earth, guardrail: m.guardrail }, parent, (x, z) => intersectsRoad(footprints, x, z, 2) || !!twinZone?.(x, z, 2));
   // 0.6.9: budgeted traffic on the actual imported polylines, never across clipped gaps.
-  let count=0;
-  for(const mesh of roads) {
-    const route=mesh.userData.route,lanes=mesh.userData.lanes;
-    if(route.halfLength<10 || route.width/lanes<2.6)continue;
-    for(let lane=0;lane<lanes;lane++)for(let s=-route.halfLength+8;s<route.halfLength-8&&count<60;s+=45) {
-      const u=-route.width/2+route.width*(lane+.5)/lanes;
-      vehicle(parent,m,c,s,u,count%5===0?'van':'sedan',mesh.userData.oneway?mesh.userData.oneway>0:u>=0,route,{speed:30});count++;
-    }
-  }
+  // 0.7.1: per road (`traffic: false` keeps it empty); spacing, kinds and speeds vary from one road to the next. The right
+  // of the direction of travel is u > 0 for a vehicle that follows the drawing direction.
+  let count = 0;
+  roads.forEach((mesh, index) => {
+    const route = mesh.userData.route,
+      lanes = mesh.userData.lanes;
+    if (!mesh.userData.traffic || route.halfLength < 10 || route.width / lanes < 2.6) return;
+    const roll = n => {
+        const v = Math.sin((c.seed + 1) * 12.9898 + index * 78.233 + n * 37.719) * 43758.5453;
+        return v - Math.floor(v);
+      },
+      gap = 38 + 30 * roll(1),
+      speed = 26 + 12 * roll(2);
+    for (let lane = 0; lane < lanes; lane++)
+      for (let s = -route.halfLength + 8 + gap * roll(3 + lane); s < route.halfLength - 8 && count < 80; s += gap * (0.7 + 0.6 * roll(count + 9))) {
+        const u = -route.width / 2 + (route.width * (lane + 0.5)) / lanes,
+          kind = ['sedan', 'suv', 'van', 'hatchback', 'pickup'][Math.floor(roll(count * 3 + 5) * 5)];
+        vehicle(parent, m, c, s, u, kind, mesh.userData.oneway ? mesh.userData.oneway > 0 : u >= 0, route, { speed: speed * (1 + 0.1 * lane) });
+        count++;
+      }
+  });
   parent.userData.demTriangles = built.triangles;
   return waters;
 }
@@ -1104,7 +1119,8 @@ export function addEnvironment(c, m, parent, fills) {
   // 0.6.8: imported site: off the water (and its banks), off the imported roads, inside the DTM.
   const site = D ? demSite(D) : null,
     demOccupied = (x, z, margin) =>
-      !!site && (site.shore(x, z) > -margin || roadDistance(D, x, z) < margin * 0.4 || !site.inside(x, z, 1));
+      // 0.7.1: trees keep off the road bench as well (2.5 m from the pavement); grass may grow on the shoulders.
+      !!site && (site.shore(x, z) > -margin || roadDistance(D, x, z) < (margin > 1 ? Math.max(2.5, margin * 0.4) : margin * 0.4) || !site.inside(x, z, 1));
   const occupied = (x, z, margin = 2) => {
     for (const o of obstacles) {
       const p = coordinates(o, x, z);
@@ -1153,7 +1169,7 @@ export function addEnvironment(c, m, parent, fills) {
     spacingGrid.get(key).push(t);
   }
   // 0.6.8: imported forest zones, thinning away from the bridge (twice the usual budget: the zones are real woods).
-  if (D) trees.push(...scatterForest(c, D, terrainHeight, rng, { budget: treeBudget * 2, occupied: (x, z, margin) => occupied(x, z, margin) }));
+  if (D) trees.push(...scatterForest(c, D, terrainHeight, rng, { budget: Math.round(treeBudget * 2.5), occupied: (x, z, margin) => occupied(x, z, margin) }));
   // Shrubs: under and around the grove trees, 1–2.4 m high, never on roads, banks or supports.
   for (const t of trees) {
     const n = t.wood > 0.4 ? 2 : rng() < 0.35 ? 1 : 0;
@@ -1273,6 +1289,23 @@ export function addEnvironment(c, m, parent, fills) {
         }
         return intersectsRoad(groundZones, x, z, margin) || nearSupport(x, z) || !!twinZone?.(x, z, margin);
       };
+    // 0.7.1: grass zones of an imported site carry a density: thinner zones reject tufts, denser ones are drawn more often.
+    const meadowHot = { density: null, boxes: [], share: 0 };
+    if (site?.grassBoxes.length) {
+      meadowHot.density = (x, z) => site.grassDensity(x, z);
+      let extra = 0;
+      for (const { zone, box } of site.grassBoxes) {
+        const d = zone.density ?? 1;
+        if (d <= 1) continue;
+        const corners = [[box[0], box[1]], [box[2], box[1]], [box[2], box[3]], [box[0], box[3]]].map(([px, py]) => site.toScene(px, py)),
+          xs = corners.map(p => p[0]),
+          zs = corners.map(p => p[1]),
+          weight = (box[2] - box[0]) * (box[3] - box[1]) * (d - 1);
+        meadowHot.boxes.push({ x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs), weight });
+        extra += weight;
+      }
+      meadowHot.share = Math.min(0.6, extra / (extent * 2 * halfZ * 0.25 + extra));
+    }
     // The scatter (about 40 000 tufts) dominates a rebuild: reuse it while nothing that shapes the ground changes.
     const meadowKey = meadowCacheKey(c, tier);
     if (meadowCache.key !== meadowKey) meadowCache = { key: meadowKey, value: scatterMeadow({
@@ -1280,7 +1313,10 @@ export function addEnvironment(c, m, parent, fills) {
       halfZ,
       rng: seeded(c.seed * 7919 + 17), // own stream: a cache hit leaves the scene random sequence unchanged
       seed: c.seed,
-      budget: grassBudget[tier] ?? grassBudget.balanced,
+      budget: Math.round((grassBudget[tier] ?? grassBudget.balanced) * (1 + meadowHot.share)),
+      density: meadowHot.density,
+      hot: meadowHot.boxes,
+      hotShare: meadowHot.share,
       height: grassHeight,
       // 0.7.0: the meadow grows on every open ground of an imported site (0.6.9 kept it to the grass zones when the
       // packet had some): water, roads, supports and the bridges stay clear.

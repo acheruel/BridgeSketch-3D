@@ -5,7 +5,7 @@
 import * as T from 'three';
 import { crossAt, frame, profile, supportStation, totalLength } from './geometry.mjs';
 import { packetToScene, sceneToPacket } from './terrain-packet.mjs';
-import { roadPath } from './road-path.mjs';
+import { ROAD_RAISE, approachLink, linkBlend, roadIndex, roadLanes, roadPath, roadProfile } from './road-path.mjs';
 
 const RAD = Math.PI / 180,
   clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -286,7 +286,7 @@ export function demSite(dem) {
     grasses = packet.zones.filter(z => z.type === 'grass'),
     roads = packet.zones.filter(z => z.type === 'road');
   // Packet-frame height (m), no offset: bilinear on the hole-free grid, clamped at the edge, then water beds.
-  const heightAt = (px, py) => {
+  const heightAt = (px, py, bare = false) => {
     const fx = clamp((px - g.x0) / g.cell, 0, g.cols - 1.0001),
       fy = clamp((g.y0 - py) / g.cell, 0, g.rows - 1.0001),
       c = Math.floor(fx),
@@ -295,6 +295,7 @@ export function demSite(dem) {
       ty = fy - r,
       i = r * g.cols + c;
     let h = (zf[i] * (1 - tx) + zf[i + 1] * tx) * (1 - ty) + (zf[i + g.cols] * (1 - tx) + zf[i + g.cols + 1] * tx) * ty;
+    if (bare) return h;
     for (const w of waters) {
       if (px < w.bx0 || px > w.bx1 || py < w.by0 || py > w.by1) continue;
       const sd = bilinear(w, w.sd, px, py);
@@ -316,8 +317,28 @@ export function demSite(dem) {
       ys = poly.map(p => p[1]);
     return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
   };
-  const forestBoxes = forests.map(z => ({ zone: z, box: bbox(z.polygon) }));
+  const forestBoxes = forests.map(z => ({ zone: z, box: bbox(z.polygon) })),
+    grassBoxes = grasses.map(z => ({ zone: z, box: bbox(z.polygon) }));
+  // 0.7.1: each road has its own smoothed profile (packet frame); the ground is benched under it (makeGround).
+  const baseAt = (px, py) => heightAt(px, py, true),
+    roadStrips = roads.map(zone => ({ ...roadProfile(zone.line, baseAt), half: zone.width / 2, zone })),
+    roadIdx = roadIndex(roadStrips);
   site = {
+    baseAt,
+    roadStrips,
+    roadIdx,
+    // Ground height (scene frame, h in scene metres) with the road benches cut in.
+    bench: roadIdx.empty ? null : (x, z, h) => roadIdx.bench(pl.cx + x * dE + z * dN, pl.cy + x * dN - z * dE, h - pl.zOffset) + pl.zOffset,
+    grassBoxes,
+    // 0.7.1: density of the grass zone under a point (1 outside any zone).
+    grassDensity(x, z) {
+      if (!grassBoxes.length) return 1;
+      const px = pl.cx + x * dE + z * dN,
+        py = pl.cy + x * dN - z * dE;
+      for (const { zone, box } of grassBoxes)
+        if (px >= box[0] && px <= box[2] && py >= box[1] && py <= box[3] && insidePolygon(zone.polygon, px, py)) return zone.density ?? 1;
+      return 1;
+    },
     key,
     packet,
     pl,
@@ -417,8 +438,13 @@ function makeGround(c, dem) {
         t = f - i;
       return table[k][i] + (table[k][i + 1] - table[k][i]) * t;
     };
+  // 0.7.1: road benches (site roads, then the continuation of this bridge's approaches), except under the deck where
+  // the measured ground stays as it is.
+  const bench = site.bench,
+    links = site.roadStrips.length ? demLinks(c, dem) : null,
+    linkBench = links?.any ? links.bench : null;
   return (x, z) => {
-    const h = raw(x, z);
+    let h = raw(x, z);
     let s, u;
     if (!c.curved) {
       s = x + L / 2;
@@ -434,6 +460,10 @@ function makeGround(c, dem) {
       u = (x - fx) * -D * Math.sin(t) + (z - fz) * Math.cos(t);
     }
     const au = Math.abs(u);
+    if ((bench || linkBench) && !(s > -1 && s < L + 1 && au < half + 4)) {
+      if (bench) h = bench(x, z, h);
+      if (linkBench) h = linkBench(x, z, h);
+    }
     if (au > half + LAT) return h;
     const sup0 = support(0, u),
       supL = support(1, u),
@@ -760,97 +790,349 @@ export function buildWater(c, dem, ground, material, parent) {
 /* Roads                                                                                            */
 /* ---------------------------------------------------------------------------------------------- */
 
-// Asphalt ribbons draped on the ground, left out where the bridge footprint or water is.
-export function buildRoads(c, dem, ground, material, parent, skip) {
+// 0.7.1: roads have priority over the imported ground. A road is a flat ribbon on its own smoothed profile (road-path.mjs);
+// the ground is benched under it in makeGround, and shoulders run from the pavement edge to the ground where the road
+// stands above it. Left out where the bridge footprint or water is. mats = { road, shoulder, guardrail }.
+const stripGeometry = (rings, uvScale = 6, keepWinding = false) => {
+  const position = [],
+    uv = [],
+    index = [],
+    w = rings[0].length;
+  for (const ring of rings)
+    for (const [x, y, z] of ring) {
+      position.push(x, y, z);
+      uv.push(x / uvScale, z / uvScale);
+    }
+  for (let i = 0; i < rings.length - 1; i++)
+    for (let j = 0; j < w - 1; j++) {
+      const a = i * w + j,
+        b = a + 1,
+        d = a + w,
+        e = d + 1;
+      index.push(a, b, d, b, e, d);
+    }
+  const geo = new T.BufferGeometry();
+  geo.setAttribute('position', new T.Float32BufferAttribute(position, 3));
+  geo.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+  geo.setIndex(index);
+  geo.computeVertexNormals();
+  if (keepWinding) return geo;
+  // Keep the faces up whatever the heading of the line.
+  const n = geo.attributes.normal;
+  let up = 0;
+  for (let i = 0; i < n.count; i++) up += n.getY(i);
+  if (up < 0) {
+    const flipped = [];
+    for (let i = 0; i < index.length; i += 3) flipped.push(index[i], index[i + 2], index[i + 1]);
+    geo.setIndex(flipped);
+    geo.computeVertexNormals();
+  }
+  return geo;
+};
+// Shoulder: from the pavement edge down to the ground, at 2H:1V where the road stands above it (1.5 to 14 m out).
+const shoulderRing = (ground, x, y, z, nx, nz) => {
+  const drop = y - ground(x + nx * 1.5, z + nz * 1.5),
+    out = clamp(2 * drop, 1.5, 14),
+    ox = x + nx * out,
+    oz = z + nz * out;
+  return [
+    [x, y - 0.012, z],
+    [ox, Math.min(y - 0.05, ground(ox, oz) - 0.04), oz],
+  ];
+};
+// Three small materials shared by every road of every rebuild (never disposed).
+const shared = {};
+const markingMaterial = yellow =>
+  (shared[yellow ? 'yellow' : 'white'] ??= new T.MeshStandardMaterial({
+    color: yellow ? '#e8b93c' : '#fff5d9',
+    roughness: 1,
+    side: T.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
+  }));
+// Flat marking strips along a path: lines = [{ u, dashed, yellow }], sample(d, u) -> { x, y, z }, d from d0 to d1.
+function markingMeshes(parent, sample, d0, d1, lines, name) {
+  for (const yellow of [false, true]) {
+    const vertices = [];
+    for (const line of lines.filter(l => !!l.yellow === yellow))
+      for (let s = d0; s < d1 - 0.05; s += 1.5) {
+        if (line.dashed && Math.floor((s - d0) / 3) % 3 !== 0) continue;
+        const end = Math.min(d1, s + 1.5),
+          a = sample(s, line.u - 0.06),
+          b = sample(s, line.u + 0.06),
+          d = sample(end, line.u - 0.06),
+          e = sample(end, line.u + 0.06);
+        for (const p of [a, d, b, b, d, e]) vertices.push(p.x, p.y + 0.02, p.z);
+      }
+    if (!vertices.length) continue;
+    const geo = new T.BufferGeometry();
+    geo.setAttribute('position', new T.Float32BufferAttribute(vertices, 3));
+    geo.computeVertexNormals();
+    const mesh = new T.Mesh(geo, markingMaterial(yellow));
+    mesh.name = name;
+    mesh.receiveShadow = true;
+    mesh.userData.noBatch = true;
+    parent.add(mesh);
+  }
+}
+// W-beam guardrail (GSR) along a path at lateral offset u: rail swept on the path, a post every 1.9 m.
+const W_BEAM = [
+  [-0.04, 0.53], [0.035, 0.57], [0.05, 0.62], [-0.025, 0.68], [0.05, 0.74], [0.035, 0.8], [-0.04, 0.84],
+  [-0.044, 0.836], [0.03, 0.797], [0.044, 0.741], [-0.031, 0.68], [0.044, 0.619], [0.03, 0.573], [-0.044, 0.534],
+];
+function guardrailMeshes(parent, material, sample, d0, d1, u, name) {
+  const side = Math.sign(u) || 1,
+    n = Math.max(1, Math.ceil((d1 - d0) / 1.9)),
+    samples = [];
+  for (let k = 0; k <= n; k++) {
+    const d = d0 + ((d1 - d0) * k) / n,
+      p = sample(d, u),
+      q = sample(d, u + side);
+    samples.push({ x: p.x, y: p.y, z: p.z, nx: q.x - p.x, nz: q.z - p.z, tx: p.tx, tz: p.tz });
+  }
+  const railMat = (shared.rail ??= Object.assign(material.clone(), { side: T.DoubleSide }));
+  // closed profile, drawn double-sided: the « faces up » flip of stripGeometry is not wanted here
+  const rings = samples.map(p => [...W_BEAM, W_BEAM[0]].map(([du, dy]) => [p.x + p.nx * du, p.y + dy, p.z + p.nz * du])),
+    rail = new T.Mesh(stripGeometry(rings, 1, true), railMat);
+  rail.name = name;
+  rail.castShadow = true;
+  rail.userData.noBatch = true;
+  parent.add(rail);
+  const posts = new T.InstancedMesh(new T.BoxGeometry(0.1, 0.92, 0.13), railMat, samples.length),
+    dummy = new T.Object3D();
+  samples.forEach((p, i) => {
+    dummy.position.set(p.x + p.nx * 0.14, p.y + 0.38, p.z + p.nz * 0.14);
+    dummy.rotation.set(0, -Math.atan2(p.tz, p.tx), 0);
+    dummy.updateMatrix();
+    posts.setMatrixAt(i, dummy.matrix);
+  });
+  posts.name = name + ' posts';
+  posts.castShadow = true;
+  posts.userData.noBatch = true;
+  parent.add(posts);
+}
+
+export function buildRoads(c, dem, ground, mats, parent, skip) {
   const site = demSite(dem),
     { pl } = site,
+    zo = pl.zOffset,
     meshes = [];
-  for (const road of site.roads) {
-    const pts = [];
-    // Resample the polyline every 1.5 m in the scene frame.
-    const line = road.line.map(([px, py]) => packetToScene(pl, px, py));
-    for (let i = 0; i < line.length - 1; i++) {
-      const [x0, z0] = line[i],
-        [x1, z1] = line[i + 1],
-        len = Math.hypot(x1 - x0, z1 - z0),
-        n = Math.max(1, Math.ceil(len / 1.5));
-      for (let k = 0; k < n; k++) pts.push([x0 + ((x1 - x0) * k) / n, z0 + ((z1 - z0) * k) / n]);
-    }
-    pts.push(line.at(-1));
-    const half = road.width / 2;
-    let strip = [];
+  for (const strip of site.roadStrips) {
+    const road = strip.zone,
+      half = road.width / 2,
+      pts = strip.pts.map(([px, py]) => packetToScene(pl, px, py));
+    let run = []; // [x, z, level, nx, nz]
     const flush = () => {
-      if (strip.length >= 2) {
-        const position = [],
-          uv = [],
-          index = [];
-        strip.forEach(([x, z, nx, nz], i) => {
-          for (const side of [-1, 1]) {
-            const px = x + nx * half * side,
-              pz = z + nz * half * side;
-            position.push(px, ground(px, pz) + 0.1, pz);
-            uv.push(px / 6, pz / 6);
-          }
-          if (i > 0) {
-            const b = (i - 1) * 2;
-            // Left of travel is the first vertex; keep the face up whatever the heading.
-            index.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
-          }
-        });
-        const geo = new T.BufferGeometry();
-        geo.setAttribute('position', new T.Float32BufferAttribute(position, 3));
-        geo.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
-        geo.setIndex(index);
-        geo.computeVertexNormals();
-        const n = geo.attributes.normal;
-        if (n.getY(0) < 0) {
-          const flipped = [];
-          for (let i = 0; i < index.length; i += 3) flipped.push(index[i], index[i + 2], index[i + 1]);
-          geo.setIndex(flipped);
-          geo.computeVertexNormals();
-        }
-        const mesh = new T.Mesh(geo, material);
+      if (run.length >= 2) {
+        const rings = run.map(([x, z, y, nx, nz]) => [
+            [x + nx * half, y, z + nz * half],
+            [x - nx * half, y, z - nz * half],
+          ]),
+          mesh = new T.Mesh(stripGeometry(rings), mats.road);
         mesh.name = 'Imported road';
         mesh.receiveShadow = true;
         mesh.userData.noBatch = true;
         // 0.6.9: keep each visible road segment as a traffic path; no car crosses a clipped gap.
-        const route=roadPath(strip.map(p=>p.slice(0,2)),road.width,ground);
-        mesh.userData.route=route;
-        mesh.userData.lanes=road.lanes ?? (road.width>=6?2:1);
-        mesh.userData.oneway=road.oneway ?? 0;
-        if(road.width>=5) {
-          const vertices=[];
-          const line=(u,dashed)=>{
-            for(let s=-route.halfLength;s<route.halfLength;s+=1.5){
-              if(dashed && Math.floor((s+route.halfLength)/3)%3!==0)continue;
-              const end=Math.min(route.halfLength,s+1.5),a=route.sample(s,u-.06),b=route.sample(s,u+.06),d=route.sample(end,u-.06),e=route.sample(end,u+.06);
-              for(const p of [a,d,b,b,d,e])vertices.push(p.x,p.y+.018,p.z);
-            }
-          };
-          line(-road.width/2+.3,false);line(road.width/2-.3,false);
-          const lanes=mesh.userData.lanes;
-          for(let lane=1;lane<lanes;lane++)line(-road.width/2+road.width*lane/lanes,true);
-          const markingGeo=new T.BufferGeometry();markingGeo.setAttribute('position',new T.Float32BufferAttribute(vertices,3));markingGeo.computeVertexNormals();
-          const markingMat=new T.MeshStandardMaterial({color:'#fff5d9',roughness:1,side:T.DoubleSide});markingMat.userData.ownedMaterial=true;
-          const markings=new T.Mesh(markingGeo,markingMat);markings.name='Imported road markings';markings.receiveShadow=true;parent.add(markings);
+        const route = roadPath(run.map(p => [p[0], p[1]]), road.width, ground, run.map(p => p[2])),
+          lanes = roadLanes(road),
+          sample = (d, u) => route.sample(d - route.halfLength, u);
+        mesh.userData.route = route;
+        mesh.userData.lanes = lanes;
+        mesh.userData.oneway = road.oneway ?? 0;
+        mesh.userData.traffic = road.traffic !== false;
+        for (const side of [1, -1]) {
+          const ring = run.map(([x, z, y, nx, nz]) => shoulderRing(ground, x + nx * half * side, y, z + nz * half * side, nx * side, nz * side)),
+            shoulder = new T.Mesh(stripGeometry(ring, 4), mats.shoulder);
+          shoulder.name = 'Imported road shoulder';
+          shoulder.receiveShadow = true;
+          shoulder.userData.noBatch = true;
+          parent.add(shoulder);
         }
+        if (road.width >= 5) {
+          const lines = [{ u: -half + 0.3 }, { u: half - 0.3 }];
+          for (let lane = 1; lane < lanes; lane++)
+            lines.push({ u: -half + (road.width * lane) / lanes, dashed: true, yellow: !road.oneway && lanes % 2 === 0 && lane === lanes / 2 });
+          markingMeshes(parent, sample, 0, route.length, lines, 'Imported road markings');
+        }
+        // roadPath's lateral axis is (-tz, tx): in the scene frame (x east-ish, z to the right) the LEFT of the drawing
+        // direction is u < 0.
+        for (const [which, u] of [
+          ['left', -half + 0.15],
+          ['right', half - 0.15],
+        ])
+          if ((road.barriers === 'both' || road.barriers === which) && route.length > 6)
+            guardrailMeshes(parent, mats.guardrail, sample, 0, route.length, u, 'Imported road guardrail');
         parent.add(mesh);
         meshes.push(mesh);
       }
-      strip = [];
+      run = [];
     };
     for (let i = 0; i < pts.length; i++) {
       const [x, z] = pts[i],
         [ax, az] = pts[Math.max(0, i - 1)],
         [bx, bz] = pts[Math.min(pts.length - 1, i + 1)],
         len = Math.hypot(bx - ax, bz - az) || 1;
-      const blocked = skip(x, z) || site.shore(x, z) > -2 || !site.inside(x, z, 1);
-      if (blocked) flush();
-      else strip.push([x, z, -(bz - az) / len, (bx - ax) / len]);
+      if (skip(x, z) || site.shore(x, z) > -2 || !site.inside(x, z, 1)) flush();
+      else run.push([x, z, strip.lev[i] + zo, -(bz - az) / len, (bx - ax) / len]);
     }
     flush();
   }
   return meshes;
+}
+
+/* ---------------------------------------------------------------------------------------------- */
+/* 0.7.1: bridge approaches continued along a drawn road                                            */
+/* ---------------------------------------------------------------------------------------------- */
+
+const linkCache = new WeakMap();
+// links = { start, end, any, bench(x, z, h), footprints() }: for each bridge end, the drawn road that passes the end of
+// the approach and runs along the bridge (a zone with `link: false` is never used). A link is a path in the scene frame:
+// { pts, lev, dist, length, half, dir, sE, sample(d, u) } with d metres past the approach end and u in the bridge frame.
+export function demLinks(c, dem) {
+  const key = demKey(dem),
+    hit = linkCache.get(c);
+  if (hit?.key === key) return hit.links;
+  const site = demSite(dem),
+    { pl } = site,
+    L = totalLength(c),
+    half = c.width / 2,
+    reach = c.approach + 18,
+    drop = Math.max(0, -Math.min(crossAt(c, -half), crossAt(c, half), 0)),
+    out = { start: null, end: null };
+  for (const [name, sE, dir] of [
+    ['start', -reach, -1],
+    ['end', L + reach, 1],
+  ]) {
+    const f = frame(c, sE),
+      end = { x: f.x, z: f.z, tx: f.tx * dir, tz: f.tz * dir },
+      p0 = profile(c, sE),
+      grade = (profile(c, sE + dir) - p0) * 1; // rise per metre going away from the bridge
+    let best = null;
+    for (const strip of site.roadStrips) {
+      if (strip.zone.link === false) continue;
+      const line = strip.zone.line.map(([px, py]) => packetToScene(pl, px, py)),
+        link = approachLink(end, line);
+      if (link && (!best || link.blend < best.link.blend)) best = { link, strip };
+    }
+    if (!best) continue;
+    const { link } = best;
+    // stop at the edge of the block or at water
+    let count = link.pts.length;
+    for (let i = 0; i < link.pts.length; i++)
+      if (!site.inside(link.pts[i][0], link.pts[i][1], 1) || site.shore(link.pts[i][0], link.pts[i][1]) > -2) {
+        count = i;
+        break;
+      }
+    if (count < 6) continue;
+    const pts = link.pts.slice(0, count),
+      dist = link.dist.slice(0, count),
+      length = dist.at(-1),
+      roadLev = pts.map((_, i) => {
+        const [qx, qz] = link.roadPts[i],
+          [px, py] = sceneToPacket(pl, qx, qz),
+          near = site.roadIdx.nearest(px, py);
+        return (near ? near.lev : site.baseAt(px, py) + ROAD_RAISE) + pl.zOffset;
+      }),
+      vertical = Math.min(length, Math.max(link.blend, clamp(Math.abs(p0 - roadLev[0]) / 0.05, 30, 90))),
+      lev = pts.map((_, i) => {
+        const d = dist[i],
+          line = p0 + grade * Math.min(d, vertical);
+        return line + (roadLev[i] - line) * linkBlend(d / vertical);
+      }),
+      path = roadPath(pts, c.width, null, lev);
+    out[name] = {
+      pts,
+      lev,
+      dist,
+      length,
+      half,
+      dir,
+      sE,
+      zone: best.strip.zone,
+      // d metres past the approach end, u across in the bridge frame; the tangent points towards increasing stations.
+      sample(d, u = 0) {
+        const p = path.sample(d - path.halfLength, u * dir);
+        return { x: p.x, y: p.y + crossAt(c, u), z: p.z, tx: p.tx * dir, tz: p.tz * dir };
+      },
+    };
+  }
+  const list = [out.start, out.end].filter(Boolean),
+    index = roadIndex(list.map(l => ({ pts: l.pts, lev: l.lev.map(v => v - drop), half: l.half })));
+  const links = {
+    ...out,
+    any: list.length > 0,
+    bench: (x, z, h) => index.bench(x, z, h),
+    // Quads along the links (scene frame), in the shape roadFootprints() uses: scenery and site roads keep off them.
+    footprints() {
+      const polygons = [];
+      for (const l of list)
+        for (let i = 0; i < l.pts.length - 1; i++) {
+          const p = [
+            l.sample(l.dist[i], -l.half - 0.5),
+            l.sample(l.dist[i], l.half + 0.5),
+            l.sample(l.dist[i + 1], l.half + 0.5),
+            l.sample(l.dist[i + 1], -l.half - 0.5),
+          ].map(q => ({ x: q.x, z: q.z }));
+          polygons.push({ p, minX: Math.min(...p.map(v => v.x)), maxX: Math.max(...p.map(v => v.x)), minZ: Math.min(...p.map(v => v.z)), maxZ: Math.max(...p.map(v => v.z)) });
+        }
+      return polygons;
+    },
+  };
+  linkCache.set(c, { key, links });
+  return links;
+}
+
+// Meshes of the links of one bridge: pavement with the bridge crossfall, shoulders, the lane markings of the approach.
+// layout = roadLayout(c); mats = { road, shoulder }.
+export function buildLinks(c, dem, ground, mats, parent, layout) {
+  const links = demLinks(c, dem),
+    half = c.width / 2,
+    us = [...new Set([-half, -half / 2, c.crownOffset ?? 0, half / 2, half])].sort((a, b) => a - b),
+    skew = Math.abs(Math.tan((c.skew || 0) * RAD)) * half + 1;
+  for (const link of [links.start, links.end]) {
+    if (!link) continue;
+    // The pavement starts a little inside the approach (its end is skewed with the supports): no wedge left open.
+    const at = (d, u) => {
+        if (d >= 0) return link.sample(d, u);
+        const s = link.sE + link.dir * d,
+          f = frame(c, s, u);
+        return { x: f.x, y: profile(c, s) + crossAt(c, u), z: f.z, tx: f.tx, tz: f.tz };
+      },
+      rings = [-skew, ...link.dist].map(d =>
+        us.map(u => {
+          const p = at(d, u);
+          return [p.x, p.y + 0.004, p.z];
+        }),
+      ),
+      mesh = new T.Mesh(stripGeometry(rings), mats.road);
+    mesh.name = 'Approach road extension';
+    mesh.receiveShadow = true;
+    mesh.userData.noBatch = true;
+    parent.add(mesh);
+    for (const side of [-1, 1]) {
+      const ring = link.dist.map(d => {
+          const p = link.sample(d, side * half),
+            q = link.sample(d, side * (half + 1));
+          return shoulderRing(ground, p.x, p.y, p.z, q.x - p.x, q.z - p.z);
+        }),
+        shoulder = new T.Mesh(stripGeometry(ring, 4), mats.shoulder);
+      shoulder.name = 'Approach road extension shoulder';
+      shoulder.receiveShadow = true;
+      shoulder.userData.noBatch = true;
+      parent.add(shoulder);
+    }
+    if (layout.laneCenters.length) {
+      const dividers = new Set(layout.dividers.map(d => Number(d.u.toFixed(6)))),
+        lines = layout.laneEdges.filter(u => !dividers.has(Number(u.toFixed(6)))).map(u => ({ u }));
+      for (const d of layout.dividers) {
+        if (d.opposing && c.centreLine === 'double') lines.push({ u: d.u - 0.1, yellow: true }, { u: d.u + 0.1, yellow: true });
+        else lines.push({ u: d.u, dashed: true, yellow: d.opposing });
+      }
+      markingMeshes(parent, (d, u) => link.sample(d, u), 0, link.length, lines, 'Approach road extension markings');
+    }
+  }
+  return links;
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -865,21 +1147,26 @@ const area = poly => {
 
 // Tree positions inside the forest zones, thinning with the distance from the bridge; sizes follow the canopy height
 // (surface model minus ground) when the packet carries one.
-export function scatterForest(c, dem, ground, rng, { budget, occupied, near = 150 }) {
+export function scatterForest(c, dem, ground, rng, { budget, occupied, near = 200 }) {
   const site = demSite(dem),
     { packet, pl } = site,
     trees = [],
     cells = new Map();
   if (!site.forests.length) return trees;
-  const weights = site.forests.map(f => area(f.zone.polygon)),
-    total = weights.reduce((a, b) => a + b, 0);
+  // 0.7.1: each zone has a density (1 = default): it weighs the share of the trees, their spacing and how far from the
+  // bridge the wood stays thick. The budget follows the mean density (large dense zones no longer look sparse).
+  const areas = site.forests.map(f => area(f.zone.polygon)),
+    weights = site.forests.map((f, i) => areas[i] * (f.zone.density ?? 1)),
+    total = weights.reduce((a, b) => a + b, 0),
+    plain = areas.reduce((a, b) => a + b, 0);
   if (!total) return trees;
+  budget = Math.round(budget * clamp(total / plain, 0.4, 2.5));
   const gap = 4.2;
-  const taken = (x, z) => {
+  const taken = (x, z, min) => {
     const i = Math.floor(x / gap),
       k = Math.floor(z / gap);
-    for (let a = i - 1; a <= i + 1; a++)
-      for (let b = k - 1; b <= k + 1; b++) for (const t of cells.get(a * 8192 + b) ?? []) if (Math.hypot(t.x - x, t.z - z) < gap) return true;
+    for (let a = i - 2; a <= i + 2; a++)
+      for (let b = k - 2; b <= k + 2; b++) for (const t of cells.get(a * 8192 + b) ?? []) if (Math.hypot(t.x - x, t.z - z) < min) return true;
     return false;
   };
   for (let n = 0; n < budget * 60 && trees.length < budget; n++) {
@@ -891,8 +1178,9 @@ export function scatterForest(c, dem, ground, rng, { budget, occupied, near = 15
       py = box[1] + rng() * (box[3] - box[1]);
     if (!insidePolygon(zone.polygon, px, py)) continue;
     const [x, z] = packetToScene(pl, px, py);
-    if (rng() > Math.exp(-Math.hypot(x, z) / near) || !site.inside(x, z, 2)) continue;
-    if (site.shore(x, z) > -3 || taken(x, z) || occupied(x, z, 3)) continue;
+    const density = zone.density ?? 1;
+    if (rng() > Math.exp(-Math.hypot(x, z) / (near * Math.sqrt(density))) || !site.inside(x, z, 2)) continue;
+    if (site.shore(x, z) > -3 || taken(x, z, clamp(gap / Math.sqrt(density), 2.6, 8.4)) || occupied(x, z, 3)) continue;
     let scale = 1.1 + rng() * 1.5;
     if (packet.mns) {
       const i = Math.round((px - packet.grid.x0) / packet.grid.cell),

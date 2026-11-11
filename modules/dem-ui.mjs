@@ -310,13 +310,31 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     editor.draw(g);
     g.fillStyle = '#fff';
     g.font = `${12 * d}px sans-serif`;
-    g.fillText('N ↑', 10 * d, 18 * d);
+    {
+      // 0.7.1: north arrow, turned with a block that was inclined in QuickerAtlas (grid.rotation).
+      const r = (north() * Math.PI) / 180,
+        cx = map.width - 26 * d, // top right: the tips sit over the top left corner
+        cy = 30 * d,
+        ux = -Math.sin(r),
+        uy = -Math.cos(r); // canvas vector of north (y down)
+      g.strokeStyle = '#fff';
+      g.lineWidth = 2 * d;
+      g.beginPath();
+      g.moveTo(cx - ux * 10 * d, cy - uy * 10 * d);
+      g.lineTo(cx + ux * 10 * d, cy + uy * 10 * d);
+      g.moveTo(cx + ux * 10 * d, cy + uy * 10 * d);
+      g.lineTo(cx + ux * 4 * d - uy * 4 * d, cy + uy * 4 * d + ux * 4 * d);
+      g.moveTo(cx + ux * 10 * d, cy + uy * 10 * d);
+      g.lineTo(cx + ux * 4 * d + uy * 4 * d, cy + uy * 4 * d - ux * 4 * d);
+      g.stroke();
+      g.fillText('N', cx + ux * 18 * d - 4 * d, cy + uy * 18 * d + 4 * d);
+    }
     const metres = [10, 20, 50, 100, 200, 500].find(m => m * view.scale >= 70) ?? 500,
       bar = metres * view.scale * d;
     g.fillRect(10 * d, map.height - 18 * d, bar, 3 * d);
     g.fillText(`${metres} m`, 10 * d, map.height - 24 * d);
     $('dem-readout').textContent = hover
-      ? `E ${hover[0].toFixed(0)} m · N ${hover[1].toFixed(0)} m · ground ${fmt(sampleGrid(packet, hover[0], hover[1]))}`
+      ? `${north() ? 'X' : 'E'} ${hover[0].toFixed(0)} m · ${north() ? 'Y' : 'N'} ${hover[1].toFixed(0)} m · ground ${fmt(sampleGrid(packet, hover[0], hover[1]))}`
       : outside
         ? 'The footprint leaves the block: the approaches would stand on nothing.'
         : '';
@@ -391,9 +409,12 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     $('dem-conflict').textContent=configError || '⚠ The ground may touch the deck. The measured ground is kept: raise the profile or the vertical offset before applying.';
   }
 
+  // 0.7.1: bearing of the block's y axis (0 unless the block was turned in QuickerAtlas); the rotation field shows the
+  // true compass bearing of the bridge, the placement keeps the angle in the packet frame.
+  const north = () => pending?.packet.grid.rotation ?? 0;
   function syncFields() {
     const pl = pending.placement;
-    fields.azimuth.value = (Math.round(pl.azimuth * 10) / 10).toString();
+    fields.azimuth.value = (Math.round(((((pl.azimuth + north()) % 360) + 360) % 360) * 10) / 10).toString();
     fields.cx.value = Math.round(pl.cx).toString();
     fields.cy.value = Math.round(pl.cy).toString();
     fields.zOffset.value = (Math.round(pl.zOffset * 100) / 100).toString();
@@ -448,18 +469,22 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
   const acknowledge = (state, extra = {}) => {
     if (!reply) return;
     try {
-      reply.source.postMessage({ type: 'bs3d-terrain-ack', id: reply.id, state, ...extra }, reply.origin);
+      reply.send({ type: 'bs3d-terrain-ack', id: reply.id, state, ...extra });
     } catch {
       /* sender closed */
     }
     if (state !== 'received') reply = null;
   };
+  // `source`: the sending window (postMessage, answered at its exact origin) or, 0.7.1, a function that posts the answer
+  // (BroadcastChannel: a block sent to a BridgeSketch 3D tab that was already open).
   async function accept(data, origin = '', source = null) {
     if (reply) acknowledge('closed');
-    reply = source && origin ? { source, origin, id: typeof data?.transferId === 'string' ? data.transferId.slice(0, 80) : null } : null;
+    const id = typeof data?.transferId === 'string' ? data.transferId.slice(0, 80) : null;
+    reply = typeof source === 'function' ? { send: source, id } : source && origin ? { send: m => source.postMessage(m, origin), id } : null;
     try {
       const packet = validatePacket(data);
       await show(packet);
+      pending.fresh = true; // 0.7.1: a received block survives a closed dialog until it is applied or replaced
       acknowledge('received', { zones: packet.zones.length, axis: !!packet.bridge });
       notify?.(`Terrain block received${origin ? ' from ' + origin.replace(/^https?:\/\//, '') : ''}.`);
     } catch (e) {
@@ -533,6 +558,15 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
   });
   // Delete, Ctrl + Z, Ctrl + A, Enter and Esc act on the zones while no field is being typed in.
   dialog.addEventListener('keydown', e => {
+    // 0.7.1: Enter in a field used to submit the form through its first button, the close cross: the dialog closed and
+    // the import was lost. Enter now commits the field and applies, like the main button.
+    if (e.key === 'Enter' && !e.isComposing && e.target.matches?.('input, select')) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.target.blur();
+      if (pending && !editor.unfinished() && !$('dem-apply').disabled) $('dem-apply').click();
+      return;
+    }
     if (!pending || e.target.matches?.('input, select, textarea')) return;
     if (editor.key(e)) { e.preventDefault(); e.stopPropagation(); }
   });
@@ -564,7 +598,7 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     fields[key].addEventListener('input', () => {
       const v = parseFloat(fields[key].value);
       if (!pending || !Number.isFinite(v)) return;
-      pending.placement[key] = key === 'azimuth' ? ((v % 360) + 360) % 360 : v;
+      pending.placement[key] = key === 'azimuth' ? (((v - north()) % 360) + 360) % 360 : v;
       if (auto) pending.placement.zOffset = autoZOffset(pending.packet, draftConfig(), pending.placement);
       fields.zOffset.value = (Math.round(pending.placement.zOffset * 100) / 100).toString();
       drawMap();
@@ -626,6 +660,7 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     try {
       await apply({ packet: validatePacket(pending.packet), config: pending.config, placement: { ...pending.placement } });
       acknowledge('applied');
+      pending.fresh = false;
       dialog.close();
     } catch (e) {
       status(e.message, true);
@@ -648,6 +683,33 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     if (d && typeof d === 'object' && d.type === 'bs3d-terrain') accept(d, e.origin, e.source);
   });
 
+  // 0.7.1: a BridgeSketch 3D tab that is already open can receive the block. Both apps are served from the same origin
+  // (acheruel.github.io): QuickerAtlas asks « who is open? » on a BroadcastChannel, every tab answers with its id and
+  // project name, and the user picks this tab or a new one. Local test hosts on different ports never meet here.
+  const tabId = Math.random().toString(36).slice(2, 10);
+  let channel = null;
+  try {
+    channel = new BroadcastChannel('bs3d-terrain-link');
+    channel.onmessage = e => {
+      const d = e.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'bs3d-ping') channel.postMessage({ type: 'bs3d-here', tab: tabId, ping: d.ping, name: String(getConfig().name || 'Bridge').slice(0, 60), terrain: !!getOverlay() });
+      else if (d.type === 'bs3d-terrain' && d.to === tabId) {
+        const title = document.title;
+        document.title = '● Terrain received · ' + title;
+        const restore = () => {
+          document.title = title;
+          window.removeEventListener('focus', restore);
+        };
+        window.addEventListener('focus', restore);
+        if (document.hasFocus()) setTimeout(restore, 4000);
+        accept(d, location.origin, m => channel.postMessage({ ...m, to: d.from }));
+      }
+    };
+  } catch {
+    /* no BroadcastChannel: the postMessage paths still work */
+  }
+
   function openDialog({ waiting = false } = {}) {
     const overlay = getOverlay();
     $('dem-remove').hidden = !overlay;
@@ -657,6 +719,7 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
       $('dem-place').hidden = false;
       $('dem-apply').disabled = false;
       syncFields();
+      if (pending.fresh) status('This block was received but not applied yet. Apply it, or cancel to keep it for later.');
     } else {
       $('dem-place').hidden = true;
       $('dem-apply').disabled = true;
@@ -668,7 +731,9 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
   $('dem-open').onclick = () => openDialog();
   dialog.addEventListener('close', () => {
     acknowledge('closed');
-    pending=null;drag=null;
+    // 0.7.1: a block that was received but not applied yet is kept: reopening the dialog shows it again.
+    if (!pending?.fresh) pending = null;
+    drag = null;
     if (!getOverlay()) return;
     $('dem-open').classList.add('active');
   });

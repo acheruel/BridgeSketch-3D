@@ -1204,7 +1204,7 @@ function buildPair(next) {
   let guest = null,
     site;
   try {
-    guest = buildBridge(guestCfg, materials, { site: false, lights: true, fills: true, dem: guestDem });
+    guest = buildBridge(guestCfg, materials, { site: false, lights: true, fills: true, dem: guestDem, variant: 1 }); // 0.7.1: B has its own traffic
     const zones = roadFootprints(guestCfg);
     setTwinZone((x, z, margin = 0) => {
       const [u, v] = siteToGuest(x, z);
@@ -2607,7 +2607,8 @@ async function demTexture(packet) {
     }
     const texture = new T.Texture(source);
     texture.colorSpace = T.SRGBColorSpace;
-    texture.anisotropy = Math.min(8, renderer?.capabilities.getMaxAnisotropy() ?? 1);
+    // 0.7.1: full anisotropy: the image is seen at a grazing angle most of the time (it was capped at 8, visibly soft)
+    texture.anisotropy = renderer?.capabilities.getMaxAnisotropy() ?? 1;
     texture.needsUpdate = true;
     return texture;
   } catch (e) {

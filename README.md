@@ -2,7 +2,7 @@
 
 **Try it online:** [BridgeSketch 3D on GitHub Pages](https://acheruel.github.io/BridgeSketch-3D/)
 
-**A quick visual tool for bridge concepts** · Version 0.7.0 · 10 November 2026 · Anthony Chéruel
+**A quick visual tool for bridge concepts** · Version 0.7.1 · 10 November 2026 · Anthony Chéruel
 
 BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a span arrangement, deck, supports and site, then inspect the result from above, below or along the obstacle being crossed. It runs in the browser from static files, with no account, backend or build step.
 
@@ -18,6 +18,17 @@ BridgeSketch 3D is a browser-based, interactive 3D bridge configurator. Choose a
 - **Parameters:** collapsible sections and formulas in numeric fields, such as `=12*3`.
 - **History:** undo and redo with Ctrl+Z / Ctrl+Y.
 - **Files and export:** save and open JSON, share link, PNG snapshot, GLB export and IFC export (2x3, 4, 4.3).
+
+## What's new in 0.7.1
+
+- **Roads come first on an imported site:** a drawn road is a flat ribbon on its own smooth profile, slightly raised; the terrain is cut under it and shoulders reach the ground, so the ground no longer pokes through the pavement.
+- **Each road has its own settings** (terrain dialog, select a road): width, number of lanes, one-way, vehicles or not, W-beam guardrails on the left, the right or both sides.
+- **Approaches continue along a drawn road:** a road that passes the end of an approach, in the direction of the bridge, takes over from it with the same width, crossfall and markings; the traffic of the bridge drives on to the end of that road. Untick « Continues the bridge approach » to keep a road apart.
+- **Density of forest and grass zones:** a slider from 0.25 × to 3 × per zone; the default forest is also a little thicker.
+- **Darker default grass,** close to the grass of the satellite imagery.
+- **Bridge B has its own traffic:** other vehicles, positions and lane speeds than bridge A.
+- **Terrain dialog:** Enter applies (it used to close the dialog and lose the import); a block that was received but not applied is kept when the dialog is closed; QuickerAtlas can send a block to a BridgeSketch 3D tab that is already open.
+- **Fixes:** return walls were turned inside out (flat, no thickness) wherever the ground stood above elevation 0, which is every imported terrain. Blocks turned in QuickerAtlas show a true north arrow and bearing.
 
 ## What's new in 0.7.0
 
