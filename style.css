@@ -693,6 +693,24 @@ input[type='checkbox'] {
   color: #266556;
   margin: 4px 0 12px;
 }
+.lane-dirs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+  margin: 2px 0 8px;
+}
+.lane-dirs div {
+  display: flex;
+  gap: 3px;
+}
+.lane-dirs button {
+  min-width: 26px;
+  padding: 3px 0;
+  font-size: 0.95rem;
+  line-height: 1;
+}
 .derived strong {
   font-weight: 600;
   color: var(--teal-ink);
@@ -1512,6 +1530,49 @@ body.panel-collapsed .panel-toggle {
   padding: 0;
   justify-content: center;
 }
+/* 0.7.2 · Camera views: their own switch beside the scene menu, always visible (dark glass like the buttons). */
+.view-switch {
+  height: 36px;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid #ffffff2e;
+  border-radius: 9px;
+  background: #0f2a3dcc;
+  backdrop-filter: blur(10px) saturate(1.2);
+  box-shadow: 0 4px 14px #04101d40;
+}
+.view-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #e3f1f4;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.view-switch svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.view-switch button:hover:not(:disabled) {
+  background: #ffffff1f;
+  color: #fff;
+}
+.view-switch [aria-pressed='true'],
+.view-switch [aria-pressed='true']:hover:not(:disabled) {
+  background: #bcebdd;
+  color: #103b41;
+}
 .dock {
   position: relative;
 }
@@ -1560,12 +1621,6 @@ body.panel-collapsed .panel-toggle {
   text-transform: uppercase;
   color: var(--muted);
 }
-.dock-views {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-}
-.dock-views button,
 .dock-modes button {
   display: flex;
   align-items: center;
@@ -1576,13 +1631,6 @@ body.panel-collapsed .panel-toggle {
   background: #f6f9fb;
   color: var(--ink);
 }
-.dock-views button {
-  flex-direction: column;
-  gap: 3px;
-  padding: 7px 2px 6px;
-  font-size: 0.72rem;
-}
-.dock-views svg,
 .dock-modes svg {
   width: 20px;
   height: 20px;
@@ -1592,25 +1640,14 @@ body.panel-collapsed .panel-toggle {
   stroke-linejoin: round;
   stroke-linecap: round;
 }
-.dock-views button:hover:not(:disabled),
 .dock-modes button:hover:not(:disabled) {
   background: #eef5f7;
   color: var(--teal);
-}
-.dock-views [aria-pressed='true'],
-.dock-views [aria-pressed='true']:hover:not(:disabled) {
-  background: var(--mint-soft);
-  border-color: var(--teal);
-  color: var(--teal-ink);
-  box-shadow: inset 0 0 0 1px var(--teal);
 }
 .dock-modes {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
-  margin-top: 4px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--line);
 }
 .dock-modes button {
   padding: 6px 8px;
@@ -1627,7 +1664,7 @@ body.panel-collapsed .panel-toggle {
   color: #fff;
 }
 .dock-scene .dock-h {
-  margin-top: 10px;
+  margin-top: 12px;
 }
 /* 0.6.6 · Time of day: its own bar under the view menu, always visible (dark glass like the buttons). */
 .time-bar {
@@ -1684,18 +1721,22 @@ body.panel-collapsed .panel-toggle {
   border-color: #bcebdd;
   color: #103b41;
 }
-/* 0.6.6 · Weather and effects in the view menu. */
-.dock-weather {
+/* 0.6.6 · Weather in the scene menu. 0.7.2: the same row of buttons for the season and the render quality. */
+.dock-seg {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
-  margin-bottom: 4px;
 }
-.dock-weather button {
+.dock-seg.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.dock-seg button {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 3px;
+  min-height: 32px;
   padding: 7px 2px 6px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1703,7 +1744,7 @@ body.panel-collapsed .panel-toggle {
   color: var(--ink);
   font-size: 0.72rem;
 }
-.dock-weather svg {
+.dock-seg svg {
   width: 20px;
   height: 20px;
   fill: none;
@@ -1712,12 +1753,12 @@ body.panel-collapsed .panel-toggle {
   stroke-linejoin: round;
   stroke-linecap: round;
 }
-.dock-weather button:hover:not(:disabled) {
+.dock-seg button:hover:not(:disabled) {
   background: #eef5f7;
   color: var(--teal);
 }
-.dock-weather [aria-pressed='true'],
-.dock-weather [aria-pressed='true']:hover:not(:disabled) {
+.dock-seg [aria-pressed='true'],
+.dock-seg [aria-pressed='true']:hover:not(:disabled) {
   background: var(--mint-soft);
   border-color: var(--teal);
   color: var(--teal-ink);
@@ -1788,10 +1829,6 @@ body.panel-collapsed .panel-toggle {
 .section-view .dock-scene,
 .section-view .time-bar {
   display: none;
-}
-.section-view .dock-modes {
-  padding-bottom: 2px;
-  border-bottom: 0;
 }
 
 /* Messages along the edges of the view. */
@@ -1894,6 +1931,12 @@ body.focus-mode .dock-panel {
     top: 8px;
     right: 8px;
   }
+  .view-switch button {
+    padding: 0 8px;
+  }
+  .view-switch span {
+    display: none;
+  }
   .dock-panel,
   .time-bar {
     width: min(300px, calc(100vw - 16px));
@@ -1924,14 +1967,14 @@ body.focus-mode .dock-panel {
   .hud-icon {
     width: 42px;
   }
+  .view-switch {
+    height: 42px;
+  }
   .dock-panel {
     top: 96px;
   }
   .time-bar {
     height: 42px;
-  }
-  .dock-views button {
-    padding: 9px 2px 8px;
   }
   .dock-modes button {
     min-height: 40px;
@@ -2001,24 +2044,6 @@ body.sketchy-game #canvasHost {
   font-weight: 400;
   color: var(--muted);
 }
-/* 0.6.7: render quality and season moved from the parameters to the view dock. */
-.dock-selects {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 6px;
-  padding: 0 2px;
-}
-.dock-selects label {
-  display: grid;
-  gap: 3px;
-  font-size: 0.74rem;
-  color: var(--muted);
-}
-.dock-selects select {
-  width: 100%;
-  min-width: 0;
-  font-size: 0.8rem;
-}
 /* 0.6.8 · terrain import (DTM / DSM from QuickerAtlas). */
 .dem-bar {
   padding: 0 16px 12px;
@@ -2029,8 +2054,6 @@ body.sketchy-game #canvasHost {
 .dem-section summary { cursor: pointer; font-weight: 700; }
 .dem-fields input, .dem-fields select { width: 100%; min-width: 0; box-sizing: border-box; }
 .dem-source button { white-space: normal; }
-#site-north { position: absolute; left: 12px; bottom: 14px; padding: 7px 10px; border-radius: 8px; background: #102d41dc; color: white; pointer-events: none; z-index: 3; font-size: 12px; }
-#site-north span { display: inline-block; font-size: 22px; margin-right: 7px; }
 #dem-open {
   width: 100%;
   justify-content: center;

@@ -10,6 +10,7 @@ import {
   encodeConfig,
   decodeConfig,
   depths,
+  laneForward,
   roadLayout,
   steelFinishes,
   fitBoxLayout,
@@ -69,7 +70,7 @@ import { cloudShadow, concreteFinishes } from './materials.mjs';
 import { renderSettings, effectiveQuality, setGpuName, stepDownAuto, gpuInfo } from './quality.mjs';
 import { createHistory } from './history.mjs';
 import { createDemImport, saveOverlay, loadOverlay, clearOverlay } from './dem-ui.mjs';
-import { siteSun, packetToScene } from './terrain-packet.mjs';
+import { siteSun } from './terrain-packet.mjs';
 import { roadFootprints, intersectsRoad, setActiveDem, setTwinZone, setGroundOverride, terrainSampler } from './terrain.mjs';
 import { setGroundPartner } from './dem.mjs';
 import { twinConfig, twinPlacement, twinToA, aToTwin, swapTwin, mainRole, mainPlacement, pairFromA } from './twin.mjs';
@@ -151,20 +152,8 @@ let timeAppliedAt = 0,
 const tier = () => renderSettings[effectiveQuality(config.renderQuality)];
 let post = null;
 // Every visible frame goes through the bloom chain unless the tier or the Glow option turns it off.
-// 0.6.9: geographic north projected into the camera, independent of the bridge heading.
-const northBadge = document.createElement('div');
-northBadge.id = 'site-north';
-northBadge.innerHTML = '<span>↑</span>North · artistic sun path';
-northBadge.hidden = true;
-const northVector = new T.Vector3();
+// 0.7.2: the north badge of imported sites (bottom left, 0.6.9) is gone; the import dialog keeps its north arrow.
 const draw = () => {
-  if (renderer && !northBadge.parentNode) renderer.domElement.parentNode.appendChild(northBadge);
-  northBadge.hidden = !demOverlay;
-  if (demOverlay) {
-    const [x, z] = packetToScene({ ...mainDem().placement, cx: 0, cy: 0 }, 0, 1);
-    northVector.set(x, 0, z).transformDirection(camera.matrixWorldInverse);
-    northBadge.firstElementChild.style.transform = `rotate(${Math.atan2(northVector.x, northVector.y)}rad)`;
-  }
   post.render(scene, camera, { strength: config.bloom ? tier().bloom : 0 });
 };
 // Frame statistics for the Stats overlay and the Auto quality: loop rate, CPU time and GPU time (timer query).
@@ -280,12 +269,14 @@ function initWorkspace() {
       $('dock-button').focus();
     }
   });
-  // 0.6.6: weather buttons drive the (hidden) weather field of the parameters form.
-  dock.querySelectorAll('[data-weather]').forEach(b =>
+  // 0.6.6: weather buttons drive the (hidden) weather field of the parameters form. 0.7.2: season and quality too;
+  // the scene is rebuilt on the click (as selects in the dock they waited for the next edit of another parameter).
+  dock.querySelectorAll('[data-field]').forEach(b =>
     b.addEventListener('click', () => {
-      if (form.elements.weather.value === b.dataset.weather) return;
-      form.elements.weather.value = b.dataset.weather;
-      syncWeatherButtons();
+      const field = form.elements[b.dataset.field];
+      if (field.value === b.dataset.value) return;
+      field.value = b.dataset.value;
+      syncDockButtons();
       form.dispatchEvent(new Event('change'));
     }),
   );
@@ -359,13 +350,14 @@ function refreshForm() {
     )
     .join('');
   syncWaterFields();
-  syncWeatherButtons();
+  syncDockButtons();
   syncEnabled();
   if (activeKey) form.querySelector(activeKey)?.focus({ preventScroll: true });
 }
-function syncWeatherButtons() {
-  for (const b of document.querySelectorAll('[data-weather]'))
-    b.setAttribute('aria-pressed', b.dataset.weather === form.elements.weather.value);
+// 0.7.2: weather, season and render quality are rows of buttons over hidden fields of the parameters form.
+function syncDockButtons() {
+  for (const b of document.querySelectorAll('[data-field]'))
+    b.setAttribute('aria-pressed', b.dataset.value === form.elements[b.dataset.field].value);
 }
 function syncWaterFields() {
   config.spans.forEach((span, i) => {
@@ -526,6 +518,18 @@ function syncEnabled() {
           ? 'NEBT-shaped concrete concept · variable depth'
           : 'Metric NEBT family · 1200 / 810 mm flanges';
   const layout = roadLayout(config);
+  // 0.7.2: one arrow per lane (left to right); a click reverses that lane.
+  form.elements.laneDirections.value = config.laneDirections;
+  $('laneDirs').hidden = config.laneCount < 1;
+  // The arrows are rebuilt: a keyboard user keeps the focus on the lane just reversed.
+  const focusedLane = $('laneDirButtons').contains(document.activeElement) ? document.activeElement.dataset.lane : null;
+  $('laneDirButtons').innerHTML = layout.laneCenters
+    .map((_, i) => {
+      const forward = laneForward(config, i);
+      return `<button type="button" data-lane="${i}" title="Lane ${i + 1}: ${forward ? 'towards the end of the bridge' : 'towards the start of the bridge'} (click to reverse)" aria-label="Lane ${i + 1}, ${forward ? 'forward' : 'reverse'}">${forward ? '↑' : '↓'}</button>`;
+    })
+    .join('');
+  if (focusedLane !== null) $('laneDirButtons').querySelector(`[data-lane="${focusedLane}"]`)?.focus({ preventScroll: true });
   $('shoulders').textContent =
     Math.abs(layout.leftShoulder - layout.rightShoulder) < 0.001
       ? layout.leftShoulder.toFixed(2) + ' m'
@@ -582,10 +586,9 @@ function updateGroupMeta() {
     'sup-slope': c.approachWalls === 'mse' ? 'n/a' : c.frontSlope ? 'Slope on' : 'Slope off',
     'site-cross': kinds,
     'site-terrain': `${label('terrainShape')} · ${label('terrainMode')}`,
-    'site-env': `${label('environment')} · seed ${c.seed}`,
+    'site-env': `${label('environment')} · seed ${c.seed}${c.environment === 'rural' && c.forestDensity !== 1 ? ` · forest × ${c.forestDensity}` : ''}`,
     'site-river': label('waterStyle'),
     'site-sky': `${label('skyMode')} · ${label('skyModel')}`,
-    'site-render': `${label('renderQuality')}${c.bloom ? ' · glow' : ''}`,
   };
   for (const el of document.querySelectorAll('[data-meta]')) el.textContent = meta[el.dataset.meta] ?? '';
 }
@@ -1483,7 +1486,6 @@ function fit(mode = 'perspective') {
 // Pressed view button and the dock label (0.6.5).
 function showView(mode) {
   document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === mode));
-  $('dock-view').textContent = { perspective: '3D', plan: 'Plan', elevation: 'Elevation', section: 'Section' }[mode];
 }
 function captureCamera() {
   return { position: camera.position.toArray(), target: controls.target.toArray(), view, zoom: camera.zoom };
@@ -2078,7 +2080,17 @@ function flyFrame(time) {
 form.addEventListener('submit', e => e.preventDefault());
 // Fields of the parameters form that live in the view dock (form="parameters") do not bubble to the form.
 $('dock-panel').addEventListener('change', e => {
-  if (['showTraffic', 'movingTraffic', 'birds'].includes(e.target.name)) form.dispatchEvent(new Event('change'));
+  // 0.7.2: every field of the form, not a list of names (quality and season were missing from it).
+  if (e.target.form === form && e.target.name) form.dispatchEvent(new Event('change'));
+});
+// 0.7.2: a lane arrow reverses that lane (the hidden field carries the directions to readForm).
+$('laneDirButtons').addEventListener('click', e => {
+  const lane = Number(e.target.closest('button')?.dataset.lane);
+  if (!Number.isInteger(lane)) return;
+  form.elements.laneDirections.value = Array.from({ length: config.laneCount }, (_, i) =>
+    laneForward(config, i) !== (i === lane) ? 'F' : 'R',
+  ).join('');
+  form.dispatchEvent(new Event('change'));
 });
 form.addEventListener('change', async e => {
   if (e.target.id === 'activeSpan') return;
@@ -2596,7 +2608,9 @@ async function demTexture(packet) {
     img.src = packet.image.dataUrl;
     await img.decode();
     let source = img;
-    const limit = Math.min(renderer?.capabilities.maxTextureSize ?? 4096, 4096);
+    // 0.7.2: up to 8192 px (QuickerAtlas sends open orthophotos at their native 10 or 20 cm; a 600 m block at 10 cm is
+    // 6000 px). The GPU limit still applies.
+    const limit = Math.min(renderer?.capabilities.maxTextureSize ?? 4096, 8192);
     if (Math.max(img.width, img.height) > limit) {
       const k = limit / Math.max(img.width, img.height),
         canvas = document.createElement('canvas');

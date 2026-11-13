@@ -197,8 +197,7 @@ diffuseColor*=mix(grassA,grassB,smoothstep(.25,.75,meadowNoise(meadowPosition.xz
         '#include <color_fragment>',
         `#include <color_fragment>
 float meadowPatch=meadowNoise(meadowPosition.xz*.055);diffuseColor.rgb*=mix(vec3(.72,.91,.78),vec3(1.10,1.15,1.03),mix(meadowPatch,.6,lawn*.7));
-float meadowSlope=1.-clamp(abs(meadowNormal.y),0.,1.),dry=smoothstep(.035,.12,meadowSlope)*(.55+.45*meadowNoise(meadowPosition.xz*.3));
-diffuseColor.rgb*=mix(vec3(1.),vec3(1.1,1.04,.8),dry);
+// 0.7.2: no dry (yellow) tint on slopes: approach and bridge embankments keep the colour of the base ground.
 float wet=smoothstep(waterLevel+1.8,waterLevel+.25,meadowPosition.y);
 diffuseColor.rgb*=mix(vec3(1.),vec3(.78,.9,.8),wet);
 diffuseColor.rgb*=mix(vec3(1.),vec3(1.04,1.12,.94),lawn);

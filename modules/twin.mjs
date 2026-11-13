@@ -16,7 +16,7 @@ const RAD = Math.PI / 180,
   num = (v, lo, hi, fallback) => (Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Number(v))) : fallback);
 // One scene for both bridges: site, sky, light, weather, rendering and traffic display.
 export const SCENE_KEYS = ['version', 'environment', 'terrainMode', 'terrainShape', 'sceneWidth', 'background', 'timeOfDay', 'timeFlow',
-  'seed', 'waterStyle', 'skyMode', 'skyModel', 'renderQuality', 'fog', 'weather', 'bloom', 'birds', 'showTraffic', 'movingTraffic',
+  'seed', 'forestDensity', 'waterStyle', 'skyMode', 'skyModel', 'renderQuality', 'fog', 'weather', 'bloom', 'birds', 'showTraffic', 'movingTraffic',
   'trainStyle', 'twin'];
 const pick = (c, keys) => Object.fromEntries(keys.filter(k => Object.hasOwn(c, k)).map(k => [k, structuredClone(c[k])]));
 export const bridgeKeys = () => Object.keys(defaults).filter(k => !SCENE_KEYS.includes(k));

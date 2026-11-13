@@ -256,8 +256,9 @@ export function addTrees(parent, m, trees, rng, { quality = 'balanced', season =
       levels = kits.map((kit, level) =>
         [
           [kit[k].branches, m.bark, `EZ-Tree ${sp.preset} bark${level ? ' (far)' : ''}`],
-          [kit[k].leaves, leafMaterial, `EZ-Tree ${sp.preset} leaves${level ? ' (far)' : ''}`],
-          [clumpMaterial && kit[k].clumps, clumpMaterial, `EZ-Tree ${sp.preset} foliage clumps${level ? ' (far)' : ''}`],
+          // 0.7.2: winter trees are bare (they kept frosted leaves and foliage clumps).
+          [season !== 'snow' && kit[k].leaves, leafMaterial, `EZ-Tree ${sp.preset} leaves${level ? ' (far)' : ''}`],
+          [season !== 'snow' && clumpMaterial && kit[k].clumps, clumpMaterial, `EZ-Tree ${sp.preset} foliage clumps${level ? ' (far)' : ''}`],
         ].filter(([geometry]) => geometry).map(([geometry, material, name]) => {
           const mesh = new T.InstancedMesh(geometry, material, items.length);
           mesh.name = name;
@@ -312,7 +313,8 @@ export function addTrees(parent, m, trees, rng, { quality = 'balanced', season =
 // Understory shrubs at the forest edges and under the trees: one instanced draw call, instance colours like the trees.
 export function addShrubs(parent, m, shrubs, season = 'summer') {
   const material = season === 'snow' ? m.clumpsSnow : season === 'fall' ? m.clumpsFall : m.clumps;
-  if (!shrubs.length || !material) return null;
+  // 0.7.2: no shrubs in winter: they are leaf masses only, and the trees are bare.
+  if (!shrubs.length || !material || season === 'snow') return null;
   const mesh = new T.InstancedMesh(shrubGeometry(), material, shrubs.length),
     dummy = new T.Object3D(),
     tint = new T.Color(),

@@ -281,8 +281,13 @@
                   ><label>Traffic lanes<input name="laneCount" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="0" max="8" step="1" /></label>
                 </div>
                 <label>Lane width · m<input name="laneWidth" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="1.5" max="4.5" step="0.1" /></label>
+                <input type="hidden" name="laneDirections" />
+                <div class="lane-dirs" id="laneDirs" hidden>
+                  <span>Lane directions · left to right</span>
+                  <div id="laneDirButtons" role="group" aria-label="Direction of each lane"></div>
+                </div>
                 <p class="hint">
-                  Right-hand traffic. Cycle bridges may be 3–6 m wide with one 1.5–2 m cycle lane; 0 lanes gives a
+                  Right-hand traffic by default; click a lane arrow to reverse it. Cycle bridges may be 3–6 m wide with one 1.5–2 m cycle lane; 0 lanes gives a
                   pedestrian-only deck. Remaining width forms outer shoulders.
                 </p>
                 <div class="derived"><span>Outer shoulder · L / R</span><strong id="shoulders">—</strong></div>
@@ -870,10 +875,14 @@
                     <option value="rural">Rural · vegetation</option>
                     <option value="none">Open landscape</option>
                   </select></label
-                ><label>Scenery seed<input name="seed" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="0" max="99999" step="1" /></label>
+                ><div class="field-grid">
+                  <label>Scenery seed<input name="seed" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="0" max="99999" step="1" /></label
+                  ><label>Forest density · ×<input name="forestDensity" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="0.25" max="3" step="0.25" /></label>
+                </div>
                 <p class="hint">
                   Trees stay outside the bridge corridor and the area between crossing roads or railways.
-                  Change the seed for another layout.
+                  Change the seed for another layout. Forest density: 0.25 (sparse) to 3 (dense), 1 by default; on an
+                  imported site each forest zone has its own density.
                 </p>
               </div>
             </details>
@@ -906,15 +915,6 @@
                 <p class="hint">
                   Atmosphere computes Rayleigh, Mie and ozone scattering, with a real twilight. Rain and snow add a light fog.
                   Weather and birds are in the view menu, top right.
-                </p>
-              </div>
-            </details>
-            <details class="input-group" data-group="site-render">
-              <summary><span class="group-title">Rendering</span><span class="group-meta" data-meta="site-render"></span></summary>
-              <div class="group-body">
-                <label class="check"><input name="bloom" type="checkbox" />Glow (bloom)</label>
-                <p class="hint">
-                  Render quality and season are in the view menu (top right). Glow applies to Medium and High.
                 </p>
               </div>
             </details>
@@ -951,26 +951,28 @@
              model facts to the foot of the parameters panel, so the render stays clear. -->
         <div class="hud" id="hud">
           <div class="hud-row">
-          <button id="image" class="hud-btn hud-icon" type="button" title="Snapshot · save a high-quality PNG (lossless)" aria-label="Snapshot"
+          <!-- 0.7.2: the camera views have their own switch, always visible, apart from the scene menu. -->
+          <div class="view-switch" role="group" aria-label="Camera view">
+            <button data-view="perspective" type="button" aria-pressed="true"
+                  ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9Z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg><span>3D</span></button
+                ><button data-view="plan" type="button" aria-pressed="false"
+                  ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2Z"/><path d="M9 4v14M15 6v14"/></svg><span>Plan</span></button
+                ><button data-view="elevation" type="button" aria-pressed="false"
+                  ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8h20M2 20h20"/><path d="M5 8v12M12 8v12M19 8v12"/></svg><span>Elevation</span></button
+                ><button data-view="section" type="button" aria-pressed="false"
+                  ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 7h20"/><path d="M5 7v3h14V7"/><path d="M8 10v9M16 10v9"/><path d="M6 19h4M14 19h4"/></svg><span>Section</span></button>
+          </div
+          ><button id="image" class="hud-btn hud-icon" type="button" title="Snapshot · save a high-quality PNG (lossless)" aria-label="Snapshot"
             ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3.2l1.6-2.2h6.4L16.8 7H20a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.6"/></svg></button
           ><div class="dock" id="dock">
-            <button id="dock-button" class="hud-btn dock-button" type="button" aria-expanded="false" aria-controls="dock-panel" title="Views, camera, weather and display"
+            <button id="dock-button" class="hud-btn dock-button" type="button" aria-expanded="false" aria-controls="dock-panel" title="Camera modes, weather, season, quality and display"
               ><svg class="dock-layers" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15.5l9 5 9-5-3.2-1.8L12 17l-5.8-3.3z" opacity=".55"/><path d="M3 11.5l9 5 9-5-3.2-1.8L12 13l-5.8-3.3z" opacity=".8"/><path d="M12 2.5l9 5-9 5-9-5z"/></svg
-              ><span id="dock-view">3D</span
+              ><span>Scene</span
               ><span class="caret" aria-hidden="true">▾</span></button
             >
-            <div class="dock-panel" id="dock-panel" role="group" aria-label="View and display" hidden>
-              <div class="dock-h">View</div>
-              <div class="dock-views" role="group" aria-label="Camera view">
-                <button data-view="perspective" type="button" aria-pressed="true"
-                  ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9Z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg>3D</button
-                ><button data-view="plan" type="button" aria-pressed="false"
-                  ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2Z"/><path d="M9 4v14M15 6v14"/></svg>Plan</button
-                ><button data-view="elevation" type="button" aria-pressed="false"
-                  ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8h20M2 20h20"/><path d="M5 8v12M12 8v12M19 8v12"/></svg>Elevation</button
-                ><button data-view="section" type="button" aria-pressed="false"
-                  ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 7h20"/><path d="M5 7v3h14V7"/><path d="M8 10v9M16 10v9"/><path d="M6 19h4M14 19h4"/></svg>Section</button>
-              </div>
+            <!-- 0.7.2: one layout for every group (title, then a row of buttons or switches); a click applies at once. -->
+            <div class="dock-panel" id="dock-panel" role="group" aria-label="Scene and display" hidden>
+              <div class="dock-h">Camera</div>
               <div class="dock-modes">
                 <button id="drive" type="button" aria-pressed="false" title="Tour beneath the bridge from the middle road, river or railway · Escape to stop"
                   ><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2"/><path d="M3.6 10.5h6.6M13.8 10.5h6.6M12 14v6.4"/></svg><span>Drive</span></button
@@ -978,45 +980,53 @@
                   ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>Focus</span></button>
               </div>
               <div class="dock-scene">
-                <div class="dock-h">Weather &amp; effects</div>
                 <select name="weather" form="parameters" hidden aria-hidden="true" tabindex="-1">
                   <option value="clear">Clear</option>
                   <option value="rain">Light rain</option>
                   <option value="snow">Light snow</option>
                   <option value="leaves">Falling leaves</option>
                 </select>
-                <div class="dock-weather" role="group" aria-label="Weather">
-                  <button data-weather="clear" type="button" aria-pressed="true"
+                <select name="terrainMode" form="parameters" hidden aria-hidden="true" tabindex="-1">
+                  <option value="grass">Spring · summer meadow</option>
+                  <option value="fall">Autumn · fall colours</option>
+                  <option value="snow">Winter · snow</option>
+                </select>
+                <select name="renderQuality" form="parameters" hidden aria-hidden="true" tabindex="-1">
+                  <option value="auto">Auto</option>
+                  <option value="performance">Low · no reflection</option>
+                  <option value="balanced">Medium</option>
+                  <option value="high">High · dense meadow</option>
+                </select>
+                <div class="dock-h">Weather</div>
+                <div class="dock-seg" role="group" aria-label="Weather">
+                  <button data-field="weather" data-value="clear" type="button" aria-pressed="false"
                     ><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>Clear</button
-                  ><button data-weather="rain" type="button" aria-pressed="false"
+                  ><button data-field="weather" data-value="rain" type="button" aria-pressed="false"
                     ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 15.5a4.5 4.5 0 1 1 1.2-8.8A5.5 5.5 0 0 1 18.6 9 3.3 3.3 0 0 1 18 15.5Z"/><path d="M8.5 18.5 7.6 21M12.5 18.5l-.9 2.5M16.5 18.5l-.9 2.5"/></svg>Rain</button
-                  ><button data-weather="snow" type="button" aria-pressed="false"
+                  ><button data-field="weather" data-value="snow" type="button" aria-pressed="false"
                     ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/><path d="m9.6 4.6 2.4 1.6 2.4-1.6M9.6 19.4l2.4-1.6 2.4 1.6"/></svg>Snow</button
-                  ><button data-weather="leaves" type="button" aria-pressed="false"
+                  ><button data-field="weather" data-value="leaves" type="button" aria-pressed="false"
                     ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19c0-8 5-13 15-14-1 10-6 15-14 15"/><path d="M5 19 13 11"/></svg>Leaves</button>
                 </div>
-                <label class="dock-switch"><input name="birds" form="parameters" type="checkbox" role="switch" /><span class="sw" aria-hidden="true"></span><span>Birds<small>A flock of gulls by day</small></span></label>
-                <div class="dock-h">Quality &amp; season</div>
-                <div class="dock-selects">
-                  <label title="Auto picks from the GPU and lowers itself if the frame rate drops"
-                    >Quality<select name="renderQuality" form="parameters">
-                      <option value="auto">Auto</option>
-                      <option value="performance">Low · no reflection</option>
-                      <option value="balanced">Medium</option>
-                      <option value="high">High · dense meadow</option>
-                    </select></label
-                  ><label
-                    >Season<select name="terrainMode" form="parameters">
-                      <option value="grass">Spring · summer meadow</option>
-                      <option value="fall">Autumn · fall colours</option>
-                      <option value="snow">Winter · snow</option>
-                    </select></label>
+                <div class="dock-h">Season</div>
+                <div class="dock-seg three" role="group" aria-label="Season">
+                  <button data-field="terrainMode" data-value="grass" type="button" aria-pressed="false" title="Spring and summer meadow">Summer</button
+                  ><button data-field="terrainMode" data-value="fall" type="button" aria-pressed="false" title="Fall colours">Autumn</button
+                  ><button data-field="terrainMode" data-value="snow" type="button" aria-pressed="false" title="Snow, bare trees">Winter</button>
+                </div>
+                <div class="dock-h">Render quality</div>
+                <div class="dock-seg" role="group" aria-label="Render quality">
+                  <button data-field="renderQuality" data-value="auto" type="button" aria-pressed="false" title="Picks from the GPU and lowers itself if the frame rate drops">Auto</button
+                  ><button data-field="renderQuality" data-value="performance" type="button" aria-pressed="false" title="No reflection, no glow">Low</button
+                  ><button data-field="renderQuality" data-value="balanced" type="button" aria-pressed="false">Medium</button
+                  ><button data-field="renderQuality" data-value="high" type="button" aria-pressed="false" title="Dense meadow, sharper reflections">High</button>
                 </div>
                 <div class="dock-h">Display</div>
                 <div class="view-options">
                   <label class="dock-switch"><input id="reveal" type="checkbox" role="switch" /><span class="sw" aria-hidden="true"></span><span>Reveal structure<small>Hide the deck to see the girders</small></span></label
                   ><label class="dock-switch"><input name="showTraffic" form="parameters" type="checkbox" role="switch" /><span class="sw" aria-hidden="true"></span><span>Show traffic</span></label
                   ><label class="dock-switch"><input name="movingTraffic" form="parameters" type="checkbox" role="switch" /><span class="sw" aria-hidden="true"></span><span>Moving traffic</span></label
+                  ><label class="dock-switch"><input name="birds" form="parameters" type="checkbox" role="switch" /><span class="sw" aria-hidden="true"></span><span>Birds<small>A flock of gulls by day</small></span></label
                   ><label class="dock-switch" title="Frame rate, CPU and GPU time, draw calls and quality tier"><input id="stats" type="checkbox" role="switch" /><span class="sw" aria-hidden="true"></span><span>Stats<small>Frame rate and draw calls</small></span></label>
                 </div>
               </div>
@@ -1203,6 +1213,14 @@
           atmosphere after Hillaire 2020 (sebh/UnrealEngineSkyAtmosphere, MIT) and Bruneton 2008 (BSD); Preetham sky
           after Tw1ddle/Sky-Shader and the three.js Sky object (MIT); river details after Noniv/web-ocean (MIT).
         </p>
+        <h3>Version 0.7.2</h3>
+        <p>
+          The camera views (3D, Plan, Elevation, Section) have their own switch beside the scene menu; weather, season
+          and render quality are rows of buttons that apply at once. Each traffic lane can be reversed (two lanes the
+          same way are possible). Winter trees are bare. Embankments keep the colour of the ground. No pedestal under
+          pier columns; the abutment footing continues under the return walls. Forest density on the default terrain.
+          Smooth shores for imported lakes and rivers. Glow is always on.
+        </p>
         <h3>Version 0.7.1</h3>
         <p>
           Two bridges, each on its own: « Add bridge B » makes an exact copy of bridge A, then the « Bridge A / Bridge B »
@@ -1215,7 +1233,7 @@
         <h3>Version 0.6.9</h3>
         <p>
           Imported sites made faithful and editable: water visible from above, measured ground kept under the bridge (a
-          conflict is reported instead of a dug valley), sun path turned with geographic north (compass in the view).
+          conflict is reported instead of a dug valley), sun path turned with geographic north.
           A neutral bridge to set before placing it on the site; water, river, forest, grass and road zones editable here
           without a new extraction, with a manual water level; road markings and traffic on the imported roads. Bridge B:
           a second, independent bridge on the same site. Transfers from QuickerAtlas are acknowledged (received,

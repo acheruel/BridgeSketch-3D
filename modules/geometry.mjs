@@ -35,6 +35,9 @@ export const defaults = {
   abutmentType: 'return',
   wingAngle: 30,
   laneCount: 2,
+  // 0.7.2: direction of each lane from left to right, 'F' = increasing station, 'R' = the other way; '' = automatic
+  // (left half against, right half with: right-hand traffic).
+  laneDirections: '',
   sidewalkSide: 'none',
   sidewalkWidth: 3,
   showTraffic: true,
@@ -92,6 +95,8 @@ export const defaults = {
   terrainMode: 'grass',
   terrainShape: 'natural',
   sceneWidth: 140,
+  // 0.7.2: density of the woods on the default terrain (1 = as before).
+  forestDensity: 1,
   background: 'blue',
   timeOfDay: 18,
   timeFlow: true,
@@ -292,7 +297,7 @@ export const roadLayout = c => {
   const dividers = laneCenters
     .slice(1)
     .flatMap((u, i) =>
-      medianWidth && i + 1 === split ? [] : [{ u: (u + laneCenters[i]) / 2, opposing: i + 1 === split }],
+      medianWidth && i + 1 === split ? [] : [{ u: (u + laneCenters[i]) / 2, opposing: laneForward(c, i) !== laneForward(c, i + 1) }],
     );
   return {
     left,
@@ -317,7 +322,11 @@ export const roadLayout = c => {
   };
 };
 // +u is the driver's right when travelling in the increasing-station direction.
-export const laneForward = (c, index) => c.laneCount === 1 || index >= Math.floor(c.laneCount / 2);
+// 0.7.2: c.laneDirections, when it names every lane, sets each direction (two lanes the same way are possible).
+export const laneForward = (c, index) =>
+  c.laneDirections?.length === c.laneCount && c.laneCount > 0
+    ? c.laneDirections[index] === 'F'
+    : c.laneCount === 1 || index >= Math.floor(c.laneCount / 2);
 // Display RGB sampled from the requested AMS-STD-595 catalogue; these are screen approximations.
 export const steelFinishes = {
   brown: '#5F4F4A',
@@ -397,6 +406,8 @@ export function validate(raw) {
   if (![0.2, 0.225, 0.25].includes(c.deck)) throw Error('Slab thickness: select 200, 225 or 250 mm.');
   // 0.6.7: haze removed; old links and files may still carry fog: true.
   c.fog = false;
+  // 0.7.2: the Glow option is gone, bloom is always on (the quality tier sets its strength; Low has none).
+  c.bloom = true;
   if (typeof c.timeFlow !== 'boolean') throw Error('Invalid time flow option.');
   if (!['clear', 'rain', 'snow', 'leaves'].includes(c.weather)) throw Error('Select the weather: clear, rain, snow or falling leaves.');
   if (
@@ -451,6 +462,7 @@ export function validate(raw) {
     boxTopWidth: [0.8, 15],
     boxBottomWidth: [0.3, 15],
     sceneWidth: [90, 600],
+    forestDensity: [0.25, 3],
     timeOfDay: [0, 24],
     skew: [-45, 45],
     radius: [30, 5000],
@@ -648,6 +660,9 @@ export function validate(raw) {
     throw Error('Girders overlap: increase deck width, reduce overhang or use fewer girders.');
   if (!Object.hasOwn(raw, 'laneCount'))
     c.laneCount = Math.max(1, Math.min(2, Math.floor((c.width - 2 * roadLayout(c).barrierWidth) / c.laneWidth)));
+  // 0.7.2: lane directions that no longer match the lane count go back to automatic.
+  if (typeof c.laneDirections !== 'string' || c.laneDirections.length !== c.laneCount || /[^FR]/.test(c.laneDirections))
+    c.laneDirections = '';
   if (c.material === 'box') {
     const gap = spacing(c) - c.boxTopWidth,
       edge = c.girders === 1 ? (c.width - c.boxTopWidth) / 2 : c.overhang - c.boxTopWidth / 2;

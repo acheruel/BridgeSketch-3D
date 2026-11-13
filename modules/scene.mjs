@@ -87,7 +87,8 @@ const ABUTMENT_SIDE = 0.075;
 export function laneSpeed(c, lane, type = 'sedan') {
   if (type === 'cyclist') return 17;
   const forward = laneForward(c, lane),
-    rank = c.laneCount === 1 ? 0 : forward ? c.laneCount - 1 - lane : lane;
+    // 0.7.2: rank among the lanes of the same direction (lane directions can be set one by one)
+    rank = Array.from({ length: c.laneCount }, (_, i) => i).filter(i => laneForward(c, i) === forward && (forward ? i > lane : i < lane)).length;
   return 30 * (1 + 0.15 * rank);
 }
 
@@ -632,6 +633,25 @@ export function buildBridge(c, m, { batch = true, site = true, lights = site, de
             );
           wall.name = `Return wall ${j === 0 ? 'start' : 'end'} ${side < 0 ? 'left' : 'right'}`;
           structure.add(wall);
+          // 0.7.2: the abutment footing continues under each return wall: same level and 1.5 m thickness, 4 m wide
+          // (fixed), 0.3 m toe outside the wall face like the abutment footing, the rest under the fill. On a narrow
+          // deck the two footings meet at the centre line.
+          // The toe is measured from the outer face of the wall (deck edge), not from a wider truss seat.
+          const face = half - ABUTMENT_SIDE,
+            toe = side * (face + 0.3),
+            heel = side * Math.max(0, face + 0.3 - 4),
+            wallFooting = sweep(
+              c,
+              Math.min(s, end),
+              Math.max(s, end),
+              rect(Math.min(toe, heel), Math.max(toe, heel), 0, -1.5),
+              m.concrete,
+              () => earth,
+              Math.ceil(length),
+              false,
+            );
+          wallFooting.name = `Footing of return wall ${j === 0 ? 'start' : 'end'} ${side < 0 ? 'left' : 'right'}`;
+          structure.add(wallFooting);
           if (liner) {
             const outer = u + side * 0.225,
               at = t => frame(c, supportStation(c, s + direction * t, outer), outer);
@@ -826,7 +846,6 @@ export function buildBridge(c, m, { batch = true, site = true, lights = site, de
               thickness,
             );
           post.name = 'Portal leg';
-          box(structure, m.concrete, fb.x, earth + 0.12, fb.z, c.columnDiameter + 0.3, 0.45, thickness + 0.3, f.angle).name = 'Column footing';
           continue;
         }
         if (c.pierType === 'hammerhead') {
@@ -873,7 +892,6 @@ export function buildBridge(c, m, { batch = true, site = true, lights = site, de
               fillet.name = 'Hammerhead flare';
             }
           }
-          box(structure, m.concrete, f.x, earth + 0.12, f.z, w + 0.3, 0.45, d + 0.3, f.angle).name = 'Column footing';
           continue;
         } else if (c.columnShape !== 'round') {
           // Square, or rectangular: width across the support line, thickness along the road.
@@ -891,10 +909,7 @@ export function buildBridge(c, m, { batch = true, site = true, lights = site, de
           column.receiveShadow = true;
           structure.add(column);
         }
-        const footprint = c.columnShape === 'rectangular' ? c.columnThickness : c.columnDiameter;
-        // 0.6.7: no base plinth under the columns of box-girder bridges.
-        if (!['box', 'psbox'].includes(c.material))
-          box(structure, m.concrete, f.x, earth + 0.12, f.z, c.columnDiameter + 0.3, 0.45, footprint + 0.3, f.angle).name = 'Column footing';
+        // 0.7.2: no base pedestal under any pier column (0.6.7 had removed it for box girders only).
       }
       if (c.pierType === 'portal' && c.portalBeam) {
         // Tie beam between the portal legs at mid-height.

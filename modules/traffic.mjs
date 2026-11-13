@@ -10,6 +10,9 @@ import {
 } from './vehicles.mjs';
 import { crossAt, frame, profile, totalLength, vehicleFits } from './geometry.mjs';
 
+// 0.7.2: each vehicle remembers the bridge it runs on. A scene with two bridges animated every vehicle with the
+// configuration of bridge A: the traffic of bridge B kept the grade (and length) of A.
+const owner = new WeakMap();
 // extra.path: { min, max, lift } keeps a rider on a sidewalk (u limits, height above the road); extra.speed in km/h.
 export function vehicle(parent, m, c, s, u, type, forward = true, road, extra = {}) {
   if (!c.showTraffic) return;
@@ -50,6 +53,7 @@ export function vehicle(parent, m, c, s, u, type, forward = true, road, extra = 
     path,
   };
   group.userData.route = route;
+  owner.set(group, c);
   positionVehicle(group, c);
   parent.userData.vehicles ??= [];
   parent.userData.vehicles.push({ ...route, road: !!road });
@@ -127,8 +131,8 @@ export function positionVehicle(group, c) {
 
 export function animateTraffic(model, dt) {
   if (!model.config.movingTraffic || !model.config.showTraffic || !Number.isFinite(dt) || dt <= 0) return;
-  const c = model.config;
   for (const group of model.vehicles) {
+    const c = owner.get(group) ?? model.config;
     // 0.6.6: a vehicle Sketchy bonked in free roam flies on its own for a few seconds.
     if (group.userData.bonked) continue;
     const r = group.userData.route,

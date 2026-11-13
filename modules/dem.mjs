@@ -117,14 +117,33 @@ function chamfer(seed, nx, ny) {
   return d;
 }
 
+// 0.7.2: smooth shore of a water zone. Two rounds of corner cutting (Chaikin) round the angles of the traced or drawn
+// outline. Each cut takes a quarter of the edge but never more than `reach` metres (then half of it): a river drawn
+// with four points keeps its length and width, only its corners are rounded (by 4 m or so).
+export function smoothOutline(polygon, rounds = 2, reach = 3) {
+  let pts = polygon;
+  for (let n = 0; n < rounds && pts.length >= 3; n++) {
+    const next = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i],
+        b = pts[(i + 1) % pts.length],
+        t = Math.min(0.25, reach / 2 ** n / (Math.hypot(b[0] - a[0], b[1] - a[1]) || 1));
+      next.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], [b[0] + (a[0] - b[0]) * t, b[1] + (a[1] - b[1]) * t]);
+    }
+    pts = next;
+  }
+  return pts;
+}
+
 function waterRaster(packet, zone) {
   const P = prepare(packet);
   let r = P.water.get(zone);
   if (r) return r;
   const g = packet.grid,
     wc = Math.max(2, g.cell),
-    xs = zone.polygon.map(p => p[0]),
-    ys = zone.polygon.map(p => p[1]),
+    outline = smoothOutline(zone.polygon),
+    xs = outline.map(p => p[0]),
+    ys = outline.map(p => p[1]),
     margin = 10,
     bx0 = Math.min(...xs) - margin,
     by0 = Math.min(...ys) - margin,
@@ -133,9 +152,9 @@ function waterRaster(packet, zone) {
   // Scanline fill of the polygon (cell centres).
   const mask = new Uint8Array(nx * ny),
     rowsX = Array.from({ length: ny }, () => []);
-  for (let i = 0, j = zone.polygon.length - 1; i < zone.polygon.length; j = i++) {
-    const a = zone.polygon[j],
-      b = zone.polygon[i];
+  for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+    const a = outline[j],
+      b = outline[i];
     if (a[1] === b[1]) continue;
     const lo = Math.max(0, Math.ceil((Math.min(a[1], b[1]) - by0) / wc - 0.5)),
       hi = Math.min(ny - 1, Math.floor((Math.max(a[1], b[1]) - by0) / wc - 0.5));
@@ -158,8 +177,39 @@ function waterRaster(packet, zone) {
     sd = new Float32Array(nx * ny);
   let maxSd = 1,
     inCells = 0;
+  // 0.7.2: within 4 cells of the shore the distance is the exact distance to the outline. The chamfer distance of the
+  // cell mask alone moved in whole cells: the shore (where the carved bank meets the water) was a 2 m staircase.
+  const B = 4 * wc,
+    bucket = new Map(),
+    reach = 4 * wc + 1;
+  for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+    const a = outline[j],
+      b = outline[i];
+    for (let u = Math.floor((Math.min(a[0], b[0]) - reach) / B); u <= Math.floor((Math.max(a[0], b[0]) + reach) / B); u++)
+      for (let v = Math.floor((Math.min(a[1], b[1]) - reach) / B); v <= Math.floor((Math.max(a[1], b[1]) + reach) / B); v++) {
+        const key = u * 65536 + v;
+        if (!bucket.has(key)) bucket.set(key, []);
+        bucket.get(key).push(a[0], a[1], b[0], b[1]);
+      }
+  }
+  const exact = (px, py) => {
+    const e = bucket.get(Math.floor(px / B) * 65536 + Math.floor(py / B));
+    let best = Infinity;
+    for (let k = 0; e && k < e.length; k += 4) {
+      const dx = e[k + 2] - e[k],
+        dy = e[k + 3] - e[k + 1],
+        t = clamp(((px - e[k]) * dx + (py - e[k + 1]) * dy) / (dx * dx + dy * dy || 1), 0, 1),
+        d = Math.hypot(px - e[k] - t * dx, py - e[k + 1] - t * dy);
+      if (d < best) best = d;
+    }
+    return best;
+  };
   for (let i = 0; i < sd.length; i++) {
     sd[i] = mask[i] ? (dIn[i] - 0.5) * wc : -(dOut[i] - 0.5) * wc;
+    if (Math.abs(sd[i]) < 4 * wc) {
+      const d = exact(bx0 + ((i % nx) + 0.5) * wc, by0 + (Math.floor(i / nx) + 0.5) * wc);
+      if (d < Infinity) sd[i] = mask[i] ? d : -d;
+    }
     if (mask[i]) {
       inCells++;
       if (sd[i] > maxSd) maxSd = sd[i];
@@ -301,7 +351,9 @@ export function demSite(dem) {
       const sd = bilinear(w, w.sd, px, py);
       if (sd < -8) continue;
       const lev = bilinear(w, w.lev, px, py),
-        limit = sd >= 0 ? lev - 0.1 - Math.min(1.3, 0.3 * sd) : lev - 0.1 - sd;
+        // 0.7.2: one straight 1:1 bank from the dry side to 1 m inside the shore, then the gentle bed. The slope used to
+        // break right at the shore, 0.1 m under the water: the ground mesh cut the water line in scallops, cell by cell.
+        limit = sd > 1 ? lev - 1.1 - Math.min(0.3, 0.3 * (sd - 1)) : lev - 0.1 - sd;
       if (limit < h) h = limit;
     }
     return h;
@@ -534,6 +586,31 @@ export function buildTerrainGeometry(c, dem, ground, { maxTriangles = MAX_TRIANG
     line.push(sceneToPacket(pl, p.x, p.z));
   }
   const kFor = (metres, cell) => Math.max(1, Math.round(metres / cell));
+  // Is a shore within the tile (or 3 m of it)? Signed shore distance sampled on a 5 x 5 lattice of the tile.
+  const shoreCache = new Map(),
+    shoreTile = (i0, i1, j0, j1) => {
+      const key = i0 * 65536 + j0;
+      if (shoreCache.has(key)) return shoreCache.get(key);
+      const step = (Math.max(i1 - i0, j1 - j0) * g.cell) / 4;
+      let near = false;
+      for (const w of site.waters) {
+        const xa = g.x0 + i0 * g.cell,
+          xb = g.x0 + i1 * g.cell,
+          yb = g.y0 - j0 * g.cell,
+          ya = g.y0 - j1 * g.cell;
+        if (xb < w.bx0 || xa > w.bx1 || yb < w.by0 || ya > w.by1) continue;
+        for (let a = 0; a <= 4 && !near; a++)
+          for (let b = 0; b <= 4 && !near; b++) {
+            const px = xa + ((xb - xa) * a) / 4,
+              py = ya + ((yb - ya) * b) / 4;
+            if (px < w.bx0 || px > w.bx1 || py < w.by0 || py > w.by1) continue;
+            near = Math.abs(bilinear(w, w.sd, px, py)) < step + 3;
+          }
+        if (near) break;
+      }
+      shoreCache.set(key, near);
+      return near;
+    };
   const plan = scale => {
     const tiles = [];
     let count = 0;
@@ -550,7 +627,9 @@ export function buildTerrainGeometry(c, dem, ground, { maxTriangles = MAX_TRIANG
         let d = Infinity;
         for (const p of line) d = Math.min(d, Math.hypot(p[0] - cx, p[1] - cy));
         d -= halfDiag;
-        const k = d < 60 * scale ? kFor(1, g.cell) : d < 160 * scale ? kFor(2, g.cell) : kFor(4, g.cell);
+        // 0.7.2: tiles crossed by a shore keep the finest mesh wherever they are: on 2 or 4 m cells the water line
+        // followed the cells (staircase) far from the bridge.
+        const k = d < 60 * scale || shoreTile(i0, i1, j0, j1) ? kFor(1, g.cell) : d < 160 * scale ? kFor(2, g.cell) : kFor(4, g.cell);
         const t = { tx, ty, i0, i1, j0, j1, k };
         row.push(t);
         count += (Math.ceil((i1 - i0) / k) * Math.ceil((j1 - j0) / k)) * 2;
@@ -743,10 +822,22 @@ export function buildWater(c, dem, ground, material, parent) {
     for (let j = 0; j < w.ny; j++)
       for (let i = 0; i < w.nx; i++) {
         const k = j * w.nx + i;
-        if (w.sd[k] < -1.5) continue;
-        const px = w.bx0 + (i + 0.5) * w.wc,
-          py = w.by0 + (j + 0.5) * w.wc,
-          [x, z] = packetToScene(pl, px, py),
+        // 0.7.2: every cell that can share a quad with a wet cell is kept (1.5 cells: more than a cell diagonal; a fixed
+        // 1.5 m left notches along the shore), and the dry ones are pulled back onto the shore line, 0.15 m under the
+        // bank: the edge of the water follows the smooth outline instead of the cells.
+        if (w.sd[k] < -1.5 * w.wc) continue;
+        let px = w.bx0 + (i + 0.5) * w.wc,
+          py = w.by0 + (j + 0.5) * w.wc;
+        if (w.sd[k] < -0.15) {
+          const gx = w.sd[j * w.nx + Math.min(w.nx - 1, i + 1)] - w.sd[j * w.nx + Math.max(0, i - 1)],
+            gy = w.sd[Math.min(w.ny - 1, j + 1) * w.nx + i] - w.sd[Math.max(0, j - 1) * w.nx + i],
+            n = Math.hypot(gx, gy);
+          if (n > 1e-6) {
+            px += (gx / n) * (-w.sd[k] - 0.15);
+            py += (gy / n) * (-w.sd[k] - 0.15);
+          }
+        }
+        const [x, z] = packetToScene(pl, px, py),
           y = w.lev[k] + pl.zOffset;
         take[k] = position.length / 3;
         position.push(x, y, z);
@@ -763,7 +854,13 @@ export function buildWater(c, dem, ground, material, parent) {
           q = [take[k], take[k + 1], take[k + w.nx], take[k + w.nx + 1]];
         if (q.some(v => v < 0) || !(w.sd[k] > 0 || w.sd[k + 1] > 0 || w.sd[k + w.nx] > 0 || w.sd[k + w.nx + 1] > 0)) continue;
         // 0.6.9: this raster advances north, unlike the DTM rows. Reverse its winding.
-        index.push(q[0], q[1], q[2], q[1], q[3], q[2]);
+        // 0.7.2: vertices pulled onto the shore can fold a triangle over: each one is turned to face up, flat ones dropped.
+        for (const [a, b, d] of [[q[0], q[1], q[2]], [q[1], q[3], q[2]]]) {
+          const up =
+            (position[b * 3 + 2] - position[a * 3 + 2]) * (position[d * 3] - position[a * 3]) -
+            (position[b * 3] - position[a * 3]) * (position[d * 3 + 2] - position[a * 3 + 2]);
+          if (Math.abs(up) > 1e-6) index.push(a, up > 0 ? b : d, up > 0 ? d : b);
+        }
       }
     if (!index.length) continue;
     const geo = new T.BufferGeometry();

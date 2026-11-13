@@ -631,7 +631,7 @@ const cosmeticKeys = new Set([
   'version', 'name', 'steelColor', 'fasciaColor', 'barrierType', 'leftRailing', 'rightRailing', 'sidewalkRailing',
   'approachBarrier', 'lighting', 'lightSpacing', 'lightColor', 'lightSides', 'showTraffic', 'movingTraffic',
   'waterStyle', 'skyMode', 'renderQuality', 'fog', 'weather', 'background', 'timeOfDay', 'timeFlow', 'trainStyle',
-  'centreLine', 'concreteFinish', 'girderScreens', 'skyModel', 'birds',
+  'centreLine', 'concreteFinish', 'girderScreens', 'skyModel', 'birds', 'laneDirections',
   // Pier details: the meadow clearance around supports depends only on the support lines.
   'pierType', 'columns', 'columnShape', 'columnDiameter', 'columnThickness', 'columnSpread', 'bentWidth',
   'bentThickness', 'bentEndThickness', 'bentTaperStart', 'hammerheadWidth', 'hammerheadThickness', 'wallThickness',
@@ -1154,13 +1154,17 @@ export function addEnvironment(c, m, parent, fills) {
           for (const t of spacingGrid.get(a * 4096 + b) ?? []) if (Math.hypot(t.x - x, t.z - z) < gap) return true;
       return false;
     };
-  for (let i = 0; i < treeBudget * 14 && !D && c.environment === 'rural' && trees.length < treeBudget; i++) {
+  // 0.7.2: c.forestDensity (0.25 to 3, 1 = as before) thins or thickens the woods of the default terrain: number of
+  // trees, share of the tries kept and spacing, like the density of a forest zone on an imported site.
+  const fd = c.forestDensity ?? 1,
+    grove = Math.round(treeBudget * fd);
+  for (let i = 0; i < grove * 14 && !D && c.environment === 'rural' && trees.length < grove; i++) {
     const x = (rng() - 0.5) * (extent - 8),
       z = (rng() - 0.5) * (2 * halfZ - 8),
       wood = T.MathUtils.smoothstep(woodNoise(x, z), 0.5, 0.66),
       scale = 1.1 + rng() * 1.5,
       radius = scale * (3.5 - 1.3 * wood) + 1;
-    if (rng() > 0.1 + 0.9 * wood || tooClose(x, z, 3 + 2 * (1 - wood) + scale * 0.6)) continue;
+    if (rng() > (0.1 + 0.9 * wood) * Math.min(1, fd) || tooClose(x, z, (3 + 2 * (1 - wood) + scale * 0.6) / Math.sqrt(Math.max(1, fd)))) continue;
     if (occupied(x, z, radius) || intersectsRoad(corridorZones, x, z, radius)) continue;
     const t = { x, z, y: terrainHeight(x, z), scale, rotation: rng() * Math.PI, wood };
     trees.push(t);
@@ -1321,7 +1325,8 @@ export function addEnvironment(c, m, parent, fills) {
       // 0.7.0: the meadow grows on every open ground of an imported site (0.6.9 kept it to the grass zones when the
       // packet had some): water, roads, supports and the bridges stay clear.
       occupied: (x, z, margin) => clearGround(x, z, margin) || nearWater(x, z),
-      // Wet river banks grow sedges and reeds; 2H:1V slopes and embankments dry bunch grass.
+      // Wet river banks grow sedges and reeds. 0.7.2: slopes and embankments grow the same meadow as the flat ground
+      // (they carried dry, straw-coloured bunch grass and read as another colour).
       zone: (x, z) => {
         for (const o of obstacles) {
           if (o.type !== 'water') continue;
@@ -1330,9 +1335,7 @@ export function addEnvironment(c, m, parent, fills) {
             h = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
           if (d < 5.5 && h - Math.floor(h) < 0.75 - d * 0.08) return 'tall';
         }
-        const gx = grassHeight(x + 0.8, z) - grassHeight(x - 0.8, z),
-          gz = grassHeight(x, z + 0.8) - grassHeight(x, z - 0.8);
-        return Math.hypot(gx, gz) / 1.6 > 0.26 ? 'dry' : 'meadow';
+        return 'meadow';
       },
     }) };
     const meadow = meadowCache.value;
