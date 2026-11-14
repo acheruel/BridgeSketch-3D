@@ -2452,6 +2452,62 @@ $('image').onclick = async () => {
 };
 // 0.6.6: IFC export (modules/ifc-export.mjs). The bridge is rebuilt without batching so every member keeps its own
 // mesh and name; coordinates follow the road profile frame (File › Road profile…).
+// 0.7.3: export to QuickerBridge: a summary of what is sent and assumed, then the file or the tool itself.
+let qbExport = null;
+$('export-qb').onclick = async () => {
+  const { toQuickerBridge } = await import('./quickerbridge.mjs');
+  try {
+    qbExport = toQuickerBridge(config);
+  } catch (e) {
+    notify(e.message, true);
+    return;
+  }
+  const m = qbExport.project.model,
+    s = m.sections[0],
+    d = m.distribution,
+    facts = [
+      ['Spans', `${m.spans.length} · ${m.spans.map(p => p.length).join(' + ')} m${m.spans.length > 1 ? (m.spans[0].simple ? ' · simply supported' : ' · continuous') : ''}`],
+      ['Section', s.kind === 'girder' ? `Steel plate girder ${s.depth} mm${m.sections[1] ? ' · ' + m.sections[1].depth + ' mm at the piers' : ''}` : s.kind === 'nebt' ? s.nebt.replace('NEBT', 'NEBT ') : `${s.name} · ${s.stiffness_input === 'concrete' ? 'I = ' + s.I_direct + ' m⁴' : 'stiffness to enter'}`],
+      ['Permanent loads', m.dead.map(l => `${l.name} ${l.w} kN/m`).join(' · ')],
+      ['Simplified method', d.enabled ? `${d.girders} girders at ${d.spacing} m · overhang ${d.overhang} m · carriageway ${d.carriageway} m · skew ${d.skew}°` : 'off'],
+    ];
+  $('qbFacts').replaceChildren(
+    ...facts.flatMap(([k, v]) => {
+      const dt = document.createElement('dt'),
+        dd = document.createElement('dd');
+      dt.textContent = k;
+      dd.textContent = v;
+      return [dt, dd];
+    }),
+  );
+  $('qbNotes').replaceChildren(
+    ...qbExport.notes.map(text => {
+      const li = document.createElement('li');
+      li.textContent = text;
+      return li;
+    }),
+  );
+  $('qb-dialog').showModal();
+};
+$('qbDownload').onclick = async () => {
+  const { quickerBridgeFilename } = await import('./quickerbridge.mjs');
+  download(new Blob([JSON.stringify(qbExport.project, null, 2)], { type: 'application/json' }), quickerBridgeFilename(qbExport.project));
+  notify('QuickerBridge project downloaded: open it with File › Open in QuickerBridge.');
+};
+$('qbOpen').onclick = async () => {
+  const { quickerBridgeLink, QB_URL } = await import('./quickerbridge.mjs');
+  // Another address for local trials: localStorage['bs3d-qb-url'].
+  let base = QB_URL;
+  try {
+    base = localStorage.getItem('bs3d-qb-url') || QB_URL;
+  } catch {}
+  // With noopener the browser returns null: a blocked pop-up is detected by the page staying focused instead.
+  window.open(quickerBridgeLink(qbExport.project, base), '_blank', 'noopener');
+  setTimeout(() => {
+    if (document.hasFocus() && $('qb-dialog').open) notify('QuickerBridge did not open (pop-up blocked?): allow pop-ups for this site, or use « Download .json ».', true);
+  }, 1200);
+  $('qb-dialog').close();
+};
 $('export-ifc').onclick = () => {
   const o = profileOptions();
   $('ifcOrigin').textContent = `X ${frenchNumber(o.x0)}, Y ${frenchNumber(o.y0)}, Z ${frenchNumber(o.datum)} m, bearing ${frenchNumber(o.bearing)}°`;
@@ -2641,6 +2697,10 @@ function demImageOn() {
 function syncDemImage() {
   $('dem-image-row').hidden = !demOverlay?.texture;
   $('dem-image').checked = demOverlay?.showImage !== false;
+  // 0.7.3: credit of the image in the view while it is on the terrain (it was shown in the import dialog only).
+  const credit = demOverlay?.texture && demOverlay.showImage !== false ? demOverlay.packet.image?.attribution : '';
+  $('site-credit').hidden = !credit;
+  $('site-credit').textContent = credit ? 'Imagery: ' + credit : '';
 }
 $('dem-image').addEventListener('change', async e => {
   e.stopPropagation();
@@ -2650,6 +2710,7 @@ $('dem-image').addEventListener('change', async e => {
     localStorage.setItem('bs3d-dem-image', on ? 'on' : 'off');
   } catch {}
   demOverlay = { ...demOverlay, showImage: on };
+  syncDemImage();
   await update(config, { noHistory: true });
   notify(on ? 'Satellite image back on the terrain.' : 'Satellite image off: the ground is the grass of BridgeSketch 3D.');
 });

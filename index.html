@@ -120,6 +120,11 @@
                 <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18"/><path d="M4 20V9l8-5 8 5v11"/><path d="M8 20v-6h8v6"/><path d="M8 10h8"/></svg
                 ><span class="mi-text"><b>Export IFC…</b><small>BIM model for Revit, IFC 2x3 / 4 / 4.3</small></span>
               </button>
+              <!-- 0.7.3: the bridge as a QuickerBridge project (quick longitudinal analysis of one girder line) -->
+              <button id="export-qb" type="button" role="menuitem">
+                <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h18"/><path d="M6 8v4M12 8v4M18 8v4"/><path d="M3 18c3-5 6-5 9 0s6 5 9 0"/></svg
+                ><span class="mi-text"><b>Export to QuickerBridge…</b><small>Quick analysis of a girder line (.json)</small></span>
+              </button>
               <button id="undo" type="button" role="menuitem" data-action="undo" class="menu-sep" disabled>
                 <svg class="mi-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg
                 ><span class="mi-text"><b>Undo</b><small>Back to the previous state</small></span><kbd>Ctrl Z</kbd>
@@ -1044,6 +1049,8 @@
         <p id="drive-status" class="drive-status" role="status" hidden></p>
         <p id="perf-hud" class="perf-hud" role="status" aria-live="off" hidden></p>
         <p class="navigation-hint">Drag to orbit · Right-drag to pan · Scroll to zoom</p>
+        <!-- 0.7.3: credit of the image draped on an imported terrain (open orthophotos are CC BY) -->
+        <p id="site-credit" class="site-credit" hidden></p>
         <div id="feedback" role="status" aria-live="polite" hidden></div>
         <div id="fatal" role="alert" hidden></div>
         <noscript>Enable JavaScript to view bridge concepts.</noscript>
@@ -1110,6 +1117,28 @@
         </p>
         <div class="dialog-actions">
           <button value="close">Cancel</button><button id="exportIfc" class="primary" type="button">Export IFC</button>
+        </div>
+      </form>
+    </dialog>
+    <!-- 0.7.3: export of the bridge to QuickerBridge (project file, or opened there directly) -->
+    <dialog id="qb-dialog" aria-labelledby="qbTitle">
+      <form method="dialog">
+        <button class="close-dialog" aria-label="Close">×</button>
+        <h2 id="qbTitle">Export to QuickerBridge</h2>
+        <p>
+          QuickerBridge runs a quick, indicative longitudinal analysis of one girder line (envelopes, reactions, truck
+          load fraction). This sends it the spans, the continuity, the girder section, the slab and wearing-surface
+          loads and the inputs of the simplified method.
+        </p>
+        <dl class="qb-facts" id="qbFacts"></dl>
+        <ul class="qb-notes" id="qbNotes"></ul>
+        <p class="hint" id="qbHint">
+          « Open in QuickerBridge » opens the tool in a new tab with this bridge loaded. « Download .json » saves the
+          same project file, to open later with File › Open in QuickerBridge.
+        </p>
+        <div class="dialog-actions">
+          <button value="close">Cancel</button><button id="qbDownload" type="button">Download .json</button
+          ><button id="qbOpen" class="primary" type="button">Open in QuickerBridge</button>
         </div>
       </form>
     </dialog>
@@ -1212,6 +1241,13 @@
           Starfield and grass species adapted from CK42BB/procedural-stars-threejs and procedural-grass-threejs (MIT);
           atmosphere after Hillaire 2020 (sebh/UnrealEngineSkyAtmosphere, MIT) and Bruneton 2008 (BSD); Preetham sky
           after Tw1ddle/Sky-Shader and the three.js Sky object (MIT); river details after Noniv/web-ocean (MIT).
+        </p>
+        <h3>Version 0.7.3</h3>
+        <p>
+          File › Export to QuickerBridge: the bridge becomes a QuickerBridge project (spans, continuity, steel or NEBT
+          girder, slab and wearing-surface loads, girder count and spacing, overhang, carriageway and skew for the
+          simplified method), downloaded as .json or opened directly in QuickerBridge. The credit of the image draped on
+          an imported terrain is shown in the view.
         </p>
         <h3>Version 0.7.2</h3>
         <p>

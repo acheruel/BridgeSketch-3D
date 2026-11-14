@@ -2,7 +2,7 @@
 
 **Try it online:** [acheruel.github.io/BridgeSketch-3D](https://acheruel.github.io/BridgeSketch-3D/)
 
-A quick visual tool for bridge concepts · Version 0.7.2 · 13 November 2026 · Anthony Chéruel
+A quick visual tool for bridge concepts · Version 0.7.3 · 13 November 2026 · Anthony Chéruel
 
 BridgeSketch 3D is an interactive 3D bridge configurator that runs in the browser. Choose the spans, the deck, the supports and the site, then look at the result from above, from below or along the obstacle being crossed. It produces concept and presentation geometry, not structural design.
 
@@ -14,7 +14,7 @@ BridgeSketch 3D is an interactive 3D bridge configurator that runs in the browse
 - **Geometry:** curves, skew, crossfall, vertical profiles, lane directions, wall, hammerhead, bent, portal and V piers, abutments with return or wing walls.
 - **Site:** rivers, roads, railways, vegetation, seasons, weather and time of day, or a real terrain imported from [QuickerAtlas](https://acheruel.github.io/QuickerAtlas/) (Québec), with a second bridge on the same site.
 - **Views:** 3D, plan, elevation and section, plus a drive under the bridge.
-- **Files:** save and open JSON or a complete project, share a link, export PNG, SVG, GLB and IFC (2x3, 4, 4.3).
+- **Files:** save and open JSON or a complete project, share a link, export PNG, SVG, GLB and IFC (2x3, 4, 4.3), or send the bridge to [QuickerBridge](https://acheruel.github.io/QuickerBridge/) for a quick girder-line analysis.
 
 ## Use
 

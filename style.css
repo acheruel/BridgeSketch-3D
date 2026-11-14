@@ -1842,6 +1842,46 @@ body.panel-collapsed .panel-toggle {
   text-shadow: 0 1px 3px #0b1f2e;
   pointer-events: none;
 }
+/* 0.7.3 · Credit of the terrain image, bottom right like a map attribution. */
+.site-credit {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  max-width: min(70%, 560px);
+  margin: 0;
+  padding: 2px 8px;
+  border-top-left-radius: 6px;
+  background: #ffffffc7;
+  color: #24343c;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  text-align: right;
+  pointer-events: none;
+}
+.section-view .site-credit {
+  display: none;
+}
+.qb-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 14px;
+  margin: 10px 0;
+  font-size: 0.84rem;
+}
+.qb-facts dt {
+  color: var(--muted);
+}
+.qb-facts dd {
+  margin: 0;
+  font-weight: 600;
+}
+.qb-notes {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
 .section-view .navigation-hint,
 #viewport:has(#perf-hud:not([hidden])) .navigation-hint {
   display: none;
