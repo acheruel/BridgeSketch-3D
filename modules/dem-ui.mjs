@@ -4,7 +4,7 @@
 // and the saved .json know nothing about it.
 import { frame, profile, totalLength } from './geometry.mjs';
 import { siteBridge, siteParameters } from './site-config.mjs';
-import { createZoneEditor, zoneNames } from './zone-editor.mjs';
+import { createZoneEditor, zoneNames, ZONE_TYPES } from './zone-editor.mjs';
 import {
   autoPlacement,
   autoZOffset,
@@ -76,7 +76,7 @@ export const clearOverlay = async () => {
 /* ---------------------------------------------------------------------------------------------- */
 
 // Hypsometric tint with a north-west hillshade, one pixel per grid cell.
-function hillshade(packet) {
+export function hillshade(packet) {
   const { cols, rows, cell } = packet.grid,
     z = packet.mnt,
     canvas = document.createElement('canvas');
@@ -246,7 +246,7 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     for (const zone of packet.zones) {
       if (zone.type === 'road') {
         path(zone.line);
-        g.strokeStyle = '#f2d24b';
+        g.strokeStyle = ZONE_TYPES.road.color; // 0.8.0: QuickerAtlas colours
         g.lineWidth = Math.max(1.5 * d, zone.width * view.scale * d);
         g.globalAlpha = 0.85;
         g.lineJoin = 'round';
@@ -256,11 +256,14 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
       }
       path(zone.polygon);
       g.closePath();
-      g.fillStyle = zone.type === 'forest' ? 'rgba(0,158,115,0.38)' : zone.type === 'grass' ? 'rgba(240,228,66,0.3)' : 'rgba(0,114,178,0.4)';
+      const t = ZONE_TYPES[zone.type] ?? ZONE_TYPES.river;
+      g.fillStyle = t.color;
+      g.globalAlpha = t.fill;
       g.fill();
-      g.strokeStyle = zone.type === 'forest' ? '#009E73' : zone.type === 'grass' ? '#F0E442' : '#0072B2';
-      g.setLineDash(zone.type==='forest'?[2*d,5*d]:zone.type==='grass'?[8*d,3*d,2*d,3*d]:zone.type==='water'?[7*d,4*d]:[]);
-      g.lineWidth = 1.2 * d;
+      g.globalAlpha = 1;
+      g.strokeStyle = t.color;
+      g.setLineDash(t.dash.map(v => v * d));
+      g.lineWidth = 2 * d;
       g.stroke();
       g.setLineDash([]);
     }

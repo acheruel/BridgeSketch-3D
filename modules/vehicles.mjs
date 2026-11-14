@@ -173,6 +173,36 @@ export function vehicleDimensions(type) {
   };
 }
 
+// 0.8.0: rolling wheels. Every baked part carries a `wheel` attribute: axle centre (x, y) in the vehicle frame,
+// 1 / tyre radius (0 = not a wheel) and the vehicle speed in m/s (set per vehicle by setWheelSpeed). The vertex
+// shader of the rubber, trim and metal finishes turns wheel parts about their axle by wheelClock × speed / radius;
+// wheelClock (seconds of moving traffic) advances in animateTraffic. No extra draw call, batching unchanged.
+export const wheelClock = { value: 0 };
+const DEFAULT_SPEED = 30 / 3.6;
+function rolling(shader) {
+  shader.uniforms.wheelClock = wheelClock;
+  shader.vertexShader = shader.vertexShader
+    .replace(
+      '#include <common>',
+      '#include <common>\nattribute vec4 wheel;\nuniform float wheelClock;\n' +
+        'mat2 wheelTurn(){float a=-wheelClock*wheel.w*wheel.z;float c=cos(a),s=sin(a);return mat2(c,s,-s,c);}',
+    )
+    .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nif(wheel.z>0.)objectNormal.xy=wheelTurn()*objectNormal.xy;')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\nif(wheel.z>0.)transformed.xy=wheel.xy+wheelTurn()*(transformed.xy-wheel.xy);');
+}
+for (const name of ['rubber', 'trim', 'metal']) finishes[name].onBeforeCompile = rolling;
+// Tags a part of the wheel whose axle is at (x, y) with tyre radius R (coordinates after the part's own translation).
+export const wheelPart = (geometry, x, y, R) => ((geometry.userData.wheel = [x, y, R]), geometry);
+// Speed (km/h) of a batched vehicle's wheels; the templates (unbatched vehicles) roll at 30 km/h.
+export function setWheelSpeed(vehicle, kmh) {
+  for (const o of vehicle.children) {
+    const a = o.geometry?.attributes.wheel;
+    if (!a || o.userData.sharedGeometry) continue;
+    for (let i = 0; i < a.count; i++) if (a.getZ(i) > 0) a.setW(i, kmh / 3.6);
+    a.needsUpdate = true;
+  }
+}
+
 // Procedural bodies (semi trailer, double) are baked once into one merged geometry per material and shared by every
 // instance: dozens of boxes and wheels become a handful of draw calls.
 function bakeParts(build) {
@@ -180,10 +210,15 @@ function bakeParts(build) {
   const put = (material, geometry, x = 0, y = 0, z = 0, spin = false) => {
     if (spin) geometry.rotateX(Math.PI / 2); // cylinders: axis Y → Z (wheels)
     geometry.translate(x, y, z);
-    // One attribute layout for the merge: positions and normals, no index, no UVs.
+    const tag = geometry.userData.wheel;
+    // One attribute layout for the merge: positions, normals and the wheel tag, no index, no UVs.
     if (geometry.index) geometry = geometry.toNonIndexed();
     for (const name of Object.keys(geometry.attributes)) if (name !== 'position' && name !== 'normal') geometry.deleteAttribute(name);
     if (!geometry.attributes.normal) geometry.computeVertexNormals();
+    const n = geometry.attributes.position.count,
+      w = new Float32Array(n * 4);
+    if (tag) for (let i = 0; i < n; i++) w.set([tag[0] + x, tag[1] + y, 1 / tag[2], DEFAULT_SPEED], i * 4);
+    geometry.setAttribute('wheel', new T.BufferAttribute(w, 4));
     geometry.clearGroups();
     if (!buckets.has(material)) buckets.set(material, []);
     buckets.get(material).push(geometry);
@@ -221,8 +256,8 @@ function buildDouble(put) {
   const wheel = (d, z, dual = false) => {
     const r = 0.52,
       t = dual ? 0.56 : 0.3;
-    put('rubber', new T.CylinderGeometry(r, r, t, 18), x(d), r, z, true);
-    put('metal', new T.CylinderGeometry(0.3, 0.3, t + 0.01, 14), x(d), r, z + Math.sign(z) * 0.005, true);
+    put('rubber', wheelPart(new T.CylinderGeometry(r, r, t, 18), 0, 0, r), x(d), r, z, true);
+    put('metal', wheelPart(new T.CylinderGeometry(0.3, 0.3, t + 0.01, 14), 0, 0, r), x(d), r, z + Math.sign(z) * 0.005, true);
   };
   // Tractor (0.6.6: the procedural long-nose tractor with sleeper of car-models.mjs).
   buildTractor(put, L / 2);
@@ -262,9 +297,9 @@ function buildSemiTrailer(put) {
       box('amber', x, 1.22, side * 1.3, 0.11, 0.065, 0.025); // side marker
     }
     for (const x of [-5.75, -4.55]) {
-      put('rubber', new T.CylinderGeometry(0.5, 0.5, 0.28, 20), x, 0.5, side * 1.16, true);
-      put('metal', new T.CylinderGeometry(0.3, 0.3, 0.293, 16), x, 0.5, side * 1.16, true);
-      put('trim', new T.CylinderGeometry(0.11, 0.11, 0.31, 12), x, 0.5, side * 1.16, true);
+      put('rubber', wheelPart(new T.CylinderGeometry(0.5, 0.5, 0.28, 20), 0, 0, 0.5), x, 0.5, side * 1.16, true);
+      put('metal', wheelPart(new T.CylinderGeometry(0.3, 0.3, 0.293, 16), 0, 0, 0.5), x, 0.5, side * 1.16, true);
+      put('trim', wheelPart(new T.CylinderGeometry(0.11, 0.11, 0.31, 12), 0, 0, 0.5), x, 0.5, side * 1.16, true);
     }
     box('rubber', -6.35, 0.38, side * 1.16, 0.02, 0.6, 0.45); // mud flap
     box('taillamp', -6.669, 1.17, side * 0.92, 0.032, 0.16, 0.34);

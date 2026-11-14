@@ -97,6 +97,10 @@ export const defaults = {
   sceneWidth: 140,
   // 0.7.2: density of the woods on the default terrain (1 = as before).
   forestDensity: 1,
+  // 0.8.0: grass tufts on the ground (off reads better over an aerial image).
+  groundGrass: true,
+  // 0.8.0: morning mist: 'none', 'valley' (low ground of the site) or 'water' (over the water).
+  mist: 'none',
   background: 'blue',
   timeOfDay: 18,
   timeFlow: true,
@@ -410,6 +414,7 @@ export function validate(raw) {
   c.bloom = true;
   if (typeof c.timeFlow !== 'boolean') throw Error('Invalid time flow option.');
   if (!['clear', 'rain', 'snow', 'leaves'].includes(c.weather)) throw Error('Select the weather: clear, rain, snow or falling leaves.');
+  if (!['none', 'valley', 'water'].includes(c.mist)) c.mist = 'none';
   if (
     !['vehicles', 'cyclists'].includes(c.trafficMode) ||
     !['natural', 'glossy'].includes(c.waterStyle) ||
@@ -529,6 +534,7 @@ export function validate(raw) {
     typeof c.vCap !== 'boolean' ||
     typeof c.bloom !== 'boolean' ||
     typeof c.birds !== 'boolean' ||
+    typeof c.groundGrass !== 'boolean' ||
     typeof c.portalBeam !== 'boolean' ||
     !Number.isInteger(c.columns) ||
     c.columns < 1 ||

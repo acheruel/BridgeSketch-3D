@@ -174,8 +174,10 @@ function stations(x0, x1, step, fine = []) {
 
 // ---- Wheels -----------------------------------------------------------------------------------------------------
 // Tyre with rounded shoulders (lathe), dark wheel face, five alloy spokes, rim lip and hub; axle along Z.
-function wheel(put, x, z, R, width, { dual = false, truck = false } = {}) {
-  const side = Math.sign(z) || 1,
+function wheel(put0, x, z, R, width, { dual = false, truck = false } = {}) {
+  // 0.8.0: every part is tagged with its axle (x, R) and tyre radius, so the vehicle shader can roll it.
+  const put = (material, g) => put0(material, ((g.userData.wheel = [x, R, R]), g)),
+    side = Math.sign(z) || 1,
     rim = R * (truck ? 0.6 : 0.64),
     profile = [
       [rim * 0.98, -width / 2],
@@ -198,7 +200,7 @@ function wheel(put, x, z, R, width, { dual = false, truck = false } = {}) {
       g = box(truck ? 0.05 : rim * 0.2, len, 0.03).translate(0, rim * 0.2 + len / 2, 0).rotateZ(a);
     put('metal', g.translate(x, R, face - side * 0.005));
   }
-  if (dual) wheel(put, x, z - side * (width + 0.02), R, width, { truck });
+  if (dual) wheel(put0, x, z - side * (width + 0.02), R, width, { truck });
 }
 // Dark wheel-house liner behind a tyre: the arch shows depth instead of the body colour.
 function wheelHouse(put, x, R, half, rise) {

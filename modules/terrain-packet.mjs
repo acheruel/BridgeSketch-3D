@@ -137,10 +137,13 @@ export function validatePacket(p) {
         });
     }
   }
-  const image =
-    p.image && typeof p.image.dataUrl === 'string' && /^data:image\//.test(p.image.dataUrl)
-      ? { dataUrl: p.image.dataUrl, attribution: String(p.image.attribution ?? '') }
+  // 0.8.0: `label` (short name) and `images[]`, the other images QuickerAtlas sent (QA v0.7.7, « all the images »).
+  const imageOf = i =>
+    i && typeof i.dataUrl === 'string' && /^data:image\//.test(i.dataUrl)
+      ? { dataUrl: i.dataUrl, attribution: String(i.attribution ?? ''), ...(i.label ? { label: String(i.label) } : {}) }
       : null;
+  const image = imageOf(p.image),
+    images = image && Array.isArray(p.images) ? p.images.map(imageOf).filter(Boolean).slice(0, 8) : [];
   return {
     type: PACKET_TYPE,
     version: PACKET_VERSION,
@@ -154,6 +157,7 @@ export function validatePacket(p) {
     mnt,
     mns,
     image,
+    ...(images.length ? { images } : {}),
     zones,
     bridge: axis ? { axis, structure: p.bridge.structure ?? null } : null,
     attribution: Array.isArray(p.attribution) ? p.attribution.map(String) : [],

@@ -23,7 +23,7 @@ export {
 } from './terrain.mjs';
 import * as T from 'three';
 import { mergeGeometries } from '../vendor/BufferGeometryUtils.js';
-import { trafficKind } from './vehicles.mjs';
+import { trafficKind, setWheelSpeed } from './vehicles.mjs';
 import {
   frame,
   alignmentStation,
@@ -597,15 +597,24 @@ export function buildBridge(c, m, { batch = true, site = true, lights = site, de
         // 2H:1V spill slope from the abutment face to the ground, on the same toe line as the quarter cones.
         const fit = frontSlopeFit(c, s),
           reach = fit.reach + 2,
-          end = s - direction * reach;
+          end = s - direction * reach,
+          groundAt = demEarths ? terrainSampler(c) : null,
+          top = (station, u) => fit.top - Math.max(0, Math.abs(station - supportStation(c, s, u)) - 0.9) / 2;
         const slope = sweep(
           c,
           Math.min(s, end),
           Math.max(s, end),
           rect(-half + ABUTMENT_SIDE, half - ABUTMENT_SIDE, 0, -1),
           c.frontSlopeMaterial === 'stone' ? m.stone : c.frontSlopeMaterial === 'concrete' ? m.concrete : m.grass,
-          (_, station, v, u) =>
-            v === 0 ? fit.top - Math.max(0, Math.abs(station - supportStation(c, s, u)) - 0.9) / 2 : earth + 1,
+          (_, station, v, u) => {
+            if (v === 0) return top(station, u);
+            if (!groundAt) return earth + 1;
+            // 0.8.0: on an imported site the underside follows the ground (0.3 m below it), never above the slope: no
+            // panel hanging over a lower bank, no slab left past the toe; where the slope is buried it closes flat.
+            const p = frame(c, station, u),
+              cross = crossAt(c, u);
+            return Math.min(top(station, u) + cross, groundAt(p.x, p.z) - 0.3) + 1 - cross;
+          },
           Math.ceil(reach * 2),
         );
         slope.name = 'Slope in front of abutment';
@@ -1184,7 +1193,7 @@ export function buildBridge(c, m, { batch = true, site = true, lights = site, de
     const base = c.laneCount ? m.asphalt : m.concrete,
       pavement = new T.MeshStandardMaterial({ color: base.color, map: base.map, normalMap: base.normalMap, roughness: base.roughness, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     pavement.userData.ownedMaterial = true;
-    links = buildLinks(c, D, terrainSampler(c), { road: pavement, shoulder: m.earth }, setting, layout);
+    links = buildLinks(c, D, terrainSampler(c), { road: pavement, shoulder: c.terrainMode === 'snow' ? m.snow : m.grass }, setting, layout);
     if (!links.any) pavement.dispose();
   }
   // Water marks on piers standing in the (first) river.
@@ -1210,7 +1219,10 @@ export function buildBridge(c, m, { batch = true, site = true, lights = site, de
       if (!r.road && !r.path && r.type !== 'train') r.ext = links;
     }
   if (batch) {
-    for (const vehicle of vehicles) batchMeshes(vehicle);
+    for (const vehicle of vehicles) {
+      batchMeshes(vehicle);
+      setWheelSpeed(vehicle, vehicle.userData.route.speed ?? 30);
+    }
     for (const group of [deck, haunches, structure, setting]) batchMeshes(group);
   }
   return {
@@ -1360,6 +1372,7 @@ export function disposeModel(model) {
   const geometries = new Set(),
     materials = new Set();
   model.root.traverse(o => {
+    o.userData.mist?.dispose(); // 0.8.0: baked textures of the mist
     // Cached EZ-Tree geometries are shared between rebuilds.
     if (o.geometry && !o.userData.sharedGeometry) geometries.add(o.geometry);
     o.customDepthMaterial?.dispose();

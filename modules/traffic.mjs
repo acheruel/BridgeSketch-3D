@@ -7,6 +7,7 @@ import {
   vehicleDimensions,
   vehiclePaint,
   vehicleRandom,
+  wheelClock,
 } from './vehicles.mjs';
 import { crossAt, frame, profile, totalLength, vehicleFits } from './geometry.mjs';
 
@@ -131,6 +132,7 @@ export function positionVehicle(group, c) {
 
 export function animateTraffic(model, dt) {
   if (!model.config.movingTraffic || !model.config.showTraffic || !Number.isFinite(dt) || dt <= 0) return;
+  wheelClock.value = (wheelClock.value + dt) % 3600; // 0.8.0: wheels roll only while the traffic moves
   for (const group of model.vehicles) {
     const c = owner.get(group) ?? model.config;
     // 0.6.6: a vehicle Sketchy bonked in free roam flies on its own for a few seconds.

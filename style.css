@@ -2129,6 +2129,31 @@ body.sketchy-game #canvasHost {
 .dem-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .dem-seg button.on { border-color: var(--teal); background: #eefaf6; color: var(--teal-ink); font-weight: 650; }
 .dem-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+/* 0.8.0: zone editing laid out like QuickerAtlas: tool bar on the map, one line per zone type, a selection box */
+.zone-bar { position: absolute; left: 8px; top: 36px; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 8px; background: #102d41e6; box-shadow: var(--shadow-pop); }
+.zone-bar[hidden] { display: none; }
+.zone-bar button { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 4px 9px; border: 0; border-radius: 6px; background: none; color: #fff; font: inherit; font-size: 0.74rem; cursor: pointer; }
+.zone-bar button:hover:not(:disabled) { background: #ffffff1f; }
+.zone-bar button[aria-pressed='true'] { background: var(--mint); color: var(--navy); }
+.zone-bar button:disabled { opacity: 0.45; cursor: default; }
+.zone-bar button.danger:not(:disabled) { color: #ffb4aa; }
+.zone-bar button:focus-visible { outline: 2px solid var(--mint); outline-offset: 1px; }
+.zone-sep { width: 1px; height: 18px; margin: 0 3px; background: #ffffff40; }
+.zone-fams { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 2px; }
+.zone-fams li { display: grid; grid-template-columns: 24px minmax(0, 1fr) 2.2em auto auto; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 6px; }
+.zone-fams li:hover { background: var(--menu-hover); }
+.zone-fams li.none .zone-famname, .zone-fams li.none b { color: var(--muted); }
+.zone-fams .zone-famname { justify-self: start; padding: 2px 4px; border: 0; border-radius: 4px; background: none; color: var(--ink); font: inherit; font-size: 0.82rem; text-align: left; cursor: pointer; }
+.zone-fams .zone-famname:disabled { cursor: default; }
+.zone-fams .zone-famname[aria-pressed='true'] { background: var(--mint-soft); color: var(--teal-ink); font-weight: 600; }
+.zone-fams b { font-size: 0.8rem; font-variant-numeric: tabular-nums; text-align: right; }
+.zone-fams button.zone-add, .zone-fams button.zone-clear { padding: 3px 8px; font-size: 0.74rem; }
+.zone-fams button.zone-clear:not(:disabled) { color: var(--err-ink); }
+.zone-tool, .zone-sel { margin: 8px 0; padding: 9px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-card); background: var(--head-fill); display: grid; gap: 8px; }
+.zone-tool[hidden], .zone-sel[hidden] { display: none; }
+.zone-tool p { margin: 0; font-size: 0.8rem; color: var(--muted); }
+.zone-sel-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.zone-sel-head small { color: var(--muted); font-size: 0.76rem; }
 .dem-tools[hidden] { display: none; }
 .dem-tools > span { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-right: 2px; }
 .dem-tools button { padding: 5px 10px; }
@@ -2240,36 +2265,78 @@ body.sketchy-game #canvasHost {
   }
 }
 
-/* 0.7.0: « Bridge A / Bridge B » switch and placement plan of bridge B (modules/twin-ui.mjs) */
-.bridge-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 2px 0 8px; padding: 3px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--head-fill); }
-.bridge-switch button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 34px; padding: 4px 8px; border: 1px solid transparent; border-radius: 7px; background: none; color: var(--ink); font-weight: 650; cursor: pointer; }
-.bridge-switch button b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #dbe5ec; font-size: 12px; }
-.bridge-switch button:hover { background: var(--paper); border-color: var(--line-hover); }
-.bridge-switch button[aria-pressed='true'] { background: var(--navy); border-color: var(--navy); color: #fff; }
-.bridge-switch button[aria-pressed='true'] b { background: #fff; color: var(--navy); }
-#bridge-b[aria-pressed='true'] { background: #a8480a; border-color: #a8480a; }
-#bridge-b[aria-pressed='true'] b { color: #a8480a; }
-.bridge-switch button.add { border: 1px dashed var(--line-hover); color: var(--muted); font-weight: 600; }
-.bridge-switch button.add b { background: none; border: 1px dashed var(--line-hover); }
-body.editing-b .sidebar { box-shadow: inset 4px 0 0 #D55E00; }
-.twin-box { margin: 0 0 10px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--paper); }
-.twin-box > summary { padding: 8px 10px; font-weight: 650; cursor: pointer; }
-.twin-box > summary small { margin-left: 6px; color: var(--muted); font-weight: 400; }
-.twin-box > :not(summary) { margin-left: 10px; margin-right: 10px; }
-.twin-pad { display: block; width: calc(100% - 20px); height: 190px; border: 1px solid var(--line); border-radius: 8px; background: #f7fafb; touch-action: none; }
-.twin-pad.dragging { cursor: grabbing !important; }
-.twin-check { margin-top: 6px; margin-bottom: 8px; font-size: 12.5px; color: var(--teal-ink); }
+/* 0.8.0: up to four bridges (modules/twin-ui.mjs): bar above the parameter tabs and « Bridges on the site » */
+.bridge-bar { display: flex; align-items: center; gap: 6px; margin: 0 12px 8px; }
+.bridge-chips { display: flex; gap: 4px; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: none; }
+.bridge-chips button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 150px; min-height: 30px; padding: 3px 10px 3px 4px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--paper); color: var(--ink); font: inherit; font-size: 0.78rem; font-weight: 600; cursor: pointer; }
+.bridge-chips button b { display: grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--role); color: #fff; font-size: 11.5px; }
+.bridge-chips button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bridge-chips button:hover { border-color: var(--line-hover); }
+.bridge-chips button[aria-checked='true'] { border-color: var(--role); box-shadow: 0 0 0 1px var(--role); background: var(--head-fill); }
+.bridge-chips button:focus-visible, .bridge-add:focus-visible, .bridge-arrange:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.bridge-add, .bridge-arrange { display: inline-flex; align-items: center; gap: 5px; flex: none; min-height: 30px; padding: 3px 10px; border: 1px dashed var(--line-hover); border-radius: 999px; background: none; color: var(--muted); font: inherit; font-size: 0.76rem; font-weight: 600; cursor: pointer; }
+.bridge-arrange { border-style: solid; color: var(--teal-ink); }
+.bridge-add:hover:not(:disabled), .bridge-arrange:hover { background: var(--head-hover); color: var(--ink); }
+.bridge-add:disabled { opacity: 0.5; cursor: default; }
+.bridge-arrange[hidden] { display: none; }
+body[data-editing='B'] .sidebar { box-shadow: inset 4px 0 0 #A8480A; }
+body[data-editing='C'] .sidebar { box-shadow: inset 4px 0 0 #0072B2; }
+body[data-editing='D'] .sidebar { box-shadow: inset 4px 0 0 #00785A; }
+.twin-check { margin: 6px 0 8px; font-size: 12.5px; color: var(--teal-ink); }
 .twin-check.warn { color: var(--err-ink); font-weight: 650; }
-.twin-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.twin-fields label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--muted); }
-.twin-fields input { width: 100%; min-width: 0; box-sizing: border-box; min-height: 30px; padding: 4px 7px; border: 1px solid var(--line-strong); border-radius: var(--radius-input); font: inherit; color: var(--ink); }
-.twin-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; margin-bottom: 8px; }
-.twin-actions button { padding: 5px 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--paper); color: var(--ink); font-size: 12px; cursor: pointer; }
-.twin-actions button:hover { border-color: var(--line-hover); background: var(--head-hover); }
-.twin-actions button.danger { color: var(--err-ink); margin-left: auto; }
-.twin-box .hint { margin-bottom: 10px; }
-.dem-image-row { display: flex; align-items: center; gap: 8px; margin: 6px 2px 8px; font-size: 12.5px; color: var(--ink); cursor: pointer; }
-.dem-image-row[hidden] { display: none; }
+#bridges-dialog { width: min(1180px, calc(100vw - 24px)); max-width: none; max-height: calc(100vh - 24px); overflow: auto; }
+#bridges-dialog h2 { margin-top: 0; }
+.br-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; align-items: start; margin-top: 8px; }
+.br-stage { position: relative; position: sticky; top: 0; }
+#br-map { display: block; width: 100%; height: min(64vh, 620px); min-height: 300px; border-radius: 8px; background: #26323a; touch-action: none; }
+#br-map.dragging { cursor: grabbing !important; }
+.br-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.br-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.br-list li { display: flex; align-items: stretch; gap: 4px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--paper); }
+.br-list li.on { border-color: var(--role); box-shadow: 0 0 0 1px var(--role); }
+.br-pick { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; padding: 7px 9px; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.br-pick b { display: grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--role); color: #fff; font-size: 12.5px; }
+.br-pick span { display: grid; min-width: 0; }
+.br-pick strong { font-size: 0.86rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.br-pick small { color: var(--muted); font-size: 0.74rem; }
+.br-remove { flex: none; width: 34px; border: 0; border-left: 1px solid var(--line); border-radius: 0 var(--radius-card) var(--radius-card) 0; background: none; color: var(--err-ink); font-size: 1.1rem; cursor: pointer; }
+.br-remove:hover { background: var(--err-bg); }
+.br-add { align-self: start; padding: 5px 12px; border: 1px dashed var(--line-hover); border-radius: 999px; background: none; color: var(--muted); font-weight: 600; cursor: pointer; }
+.br-add:disabled { opacity: 0.5; cursor: default; }
+.br-sec { padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--head-fill); }
+.br-sec h3 { margin: 0 0 8px; font-size: 0.86rem; }
+.br-sec h3 small { color: var(--muted); font-weight: 500; }
+.br-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.br-fields label, .br-copy label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--muted); }
+.br-fields input, .br-copy select { width: 100%; min-width: 0; min-height: 30px; padding: 4px 7px; border: 1px solid var(--line-strong); border-radius: var(--radius-input); background: var(--paper); font: inherit; color: var(--ink); }
+.br-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.br-actions button, #br-copy { padding: 5px 10px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--paper); color: var(--ink); font-size: 12px; cursor: pointer; }
+.br-actions button:disabled, #br-copy:disabled { opacity: 0.5; cursor: default; }
+.br-copy { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 6px; }
+.br-copy > span { padding-bottom: 7px; color: var(--muted); }
+.br-groups { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; margin: 8px 0; font-size: 0.8rem; }
+.br-groups label { display: flex; align-items: center; gap: 6px; }
+@media (max-width: 900px) {
+  .br-layout { grid-template-columns: minmax(0, 1fr); }
+  .br-stage { position: static; }
+}
+/* 0.8.0: ground imagery picker (replaces the « Satellite image on the terrain » check box) */
+.dem-imagery { margin: -4px 16px 12px; padding: 9px 10px 10px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--head-fill); }
+.dem-imagery[hidden] { display: none; }
+.dem-imagery-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 7px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.dem-imagery-head small { font-weight: 500; letter-spacing: 0; text-transform: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dem-imagery-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 6px; }
+.imagery-opt { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); font: inherit; font-size: 11.5px; line-height: 1.2; text-align: left; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
+.imagery-opt:hover { border-color: var(--line-hover); }
+.imagery-opt:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.imagery-opt[aria-checked='true'] { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal); }
+.imagery-opt .thumb { display: block; aspect-ratio: 4 / 3; border-radius: 5px; background: #c9d3cf center / cover no-repeat; }
+.imagery-opt .thumb.grass { background-image: url('textures/meadow-v2.webp'); background-size: 64px; }
+.imagery-opt .thumb.busy { background-image: linear-gradient(100deg, #dfe7ea 40%, #eef3f5 50%, #dfe7ea 60%); background-size: 200% 100%; animation: imagery-shimmer 1.2s linear infinite; }
+@keyframes imagery-shimmer { to { background-position: -200% 0; } }
+.imagery-opt b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-height: 2.4em; font-size: 11px; font-weight: 600; }
+.imagery-opt[aria-checked='true'] b { color: var(--teal-ink); }
+@media (prefers-reduced-motion: reduce) { .imagery-opt .thumb.busy { animation: none; } }
 
 /* 0.7.1: per-zone attributes of the terrain dialog (road lanes, traffic, guardrails; forest and grass density) */
 #dem-dialog .dem-fields label.dem-check { display: flex; flex-direction: row; align-items: center; gap: 7px; align-self: end; min-height: 32px; }

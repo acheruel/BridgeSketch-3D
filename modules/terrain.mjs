@@ -8,6 +8,7 @@ import { roadsideGuardrail } from './railings.mjs';
 import { positionVehicle, vehicle } from './traffic.mjs';
 import { trafficKind } from './vehicles.mjs';
 import { tuftGeometry, flowerGeometry, scatterMeadow, grassBudget, grassKinds } from './grass.mjs';
+import { buildMist } from './mist.mjs';
 import { addShrubs, addTrees } from './trees.mjs';
 import { effectiveQuality, renderSettings } from './quality.mjs';
 import { RAIL_BED } from './geometry.mjs';
@@ -636,7 +637,7 @@ const cosmeticKeys = new Set([
   'pierType', 'columns', 'columnShape', 'columnDiameter', 'columnThickness', 'columnSpread', 'bentWidth',
   'bentThickness', 'bentEndThickness', 'bentTaperStart', 'hammerheadWidth', 'hammerheadThickness', 'wallThickness',
   'wallEnds', 'hammerheadShape', 'hammerheadCapWidth', 'hammerheadCapDepth', 'hammerheadCapEndDepth', 'portalBatter',
-  'portalBeam', 'vAngle', 'vArmThickness', 'vCap', 'hammerheadFlare', 'bloom',
+  'portalBeam', 'vAngle', 'vArmThickness', 'vCap', 'hammerheadFlare', 'bloom', 'groundGrass', 'mist',
 ]);
 let meadowCache = { key: null, value: null };
 const meadowCacheKey = (c, tier) =>
@@ -670,7 +671,7 @@ function instancedTiles(parent, geometry, material, items, tile, transform, colo
 
 // 0.6.8: the imported site: height-field mesh (draped with the satellite image when the packet has one), soil skirt and
 // underside, water zones, road ribbons. Returns the water meshes.
-function importedTerrain(c, m, parent, dem, ground, footprints) {
+function importedTerrain(c, m, parent, dem, ground, footprints, earthwork) {
   const built = buildTerrainGeometry(c, dem, ground);
   let material = c.terrainMode === 'snow' ? m.snow : m.grass;
   // 0.7.0: the satellite image is optional (dem.showImage): without it the ground is the app's own grass.
@@ -717,7 +718,16 @@ function importedTerrain(c, m, parent, dem, ground, footprints) {
     polygonOffsetUnits: -2,
   });
   road.userData.ownedMaterial = true;
-  const roads = buildRoads(c, dem, ground, { road, shoulder: m.earth, guardrail: m.guardrail }, parent, (x, z) => intersectsRoad(footprints, x, z, 2) || !!twinZone?.(x, z, 2));
+  // 0.8.0: a site road well below the deck passes under the bridge (it was cut in two); only the embankments, the
+  // approach roads and roads at deck level stop it.
+  const L = totalLength(c),
+    passesUnder = (x, z, y) => {
+      const s = alignmentStation(c, x, z);
+      return y !== undefined && s > 0 && s < L && y < profile(c, s) - 3 && !intersectsRoad(earthwork, x, z, 2);
+    };
+  // 0.8.0: road shoulders in the grass of the bridge embankments (m.earth is a lighter, untinted meadow).
+  const roads = buildRoads(c, dem, ground, { road, shoulder: c.terrainMode === 'snow' ? m.snow : m.grass, guardrail: m.guardrail }, parent,
+    (x, z, y) => (intersectsRoad(footprints, x, z, 2) && !passesUnder(x, z, y)) || !!twinZone?.(x, z, 2));
   // 0.6.9: budgeted traffic on the actual imported polylines, never across clipped gaps.
   // 0.7.1: per road (`traffic: false` keeps it empty); spacing, kinds and speeds vary from one road to the next. The right
   // of the direction of travel is u > 0 for a vehicle that follows the drawing direction.
@@ -879,7 +889,7 @@ export function addEnvironment(c, m, parent, fills) {
     parent.add(river);
     waters.push(river);
   }
-  if (D) waters.push(...importedTerrain(c, m, parent, D, terrainHeight, roadFootprints(c, fills)));
+  if (D) waters.push(...importedTerrain(c, m, parent, D, terrainHeight, roadFootprints(c, fills), roadFootprints(c, fills, false)));
   else {
   const terrainGeo = new T.PlaneGeometry(
     extent,
@@ -1222,7 +1232,7 @@ export function addEnvironment(c, m, parent, fills) {
   if (forest) parent.userData.treeLod = forest.lod;
   addShrubs(parent, m, shrubs, season);
   // Budgeted meadow (grass.mjs): denser near the bridge and in clumps, never on the submerged banks.
-  if (c.terrainMode !== 'snow') {
+  if (c.terrainMode !== 'snow' && c.groundGrass !== false) {
     const nearWater = (x, z) =>
       demOccupied(x, z, 2.3) ||
       obstacles.some(o => {
@@ -1403,6 +1413,11 @@ export function addEnvironment(c, m, parent, fills) {
       );
       if (mesh) mesh.name = `Kenney ${name}`;
     }
+  }
+  // 0.8.0: morning mist over the site (mist.mjs), an option.
+  if (c.mist === 'valley' || c.mist === 'water') {
+    const mist = buildMist(c, terrainHeight, { x0: -extent / 2, x1: extent / 2, z0: -halfZ, z1: halfZ }, waters);
+    if (mist) parent.add(mist);
   }
   return waters;
 }

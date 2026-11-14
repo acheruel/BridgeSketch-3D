@@ -40,28 +40,6 @@
             <button id="reset" class="text-button" type="button" title="Back to the starting concept (Undo brings it back)">Reset</button>
           </div>
         </div>
-        <!-- 0.7.0: two independent bridges. The switch chooses the bridge edited by the whole panel (modules/twin-ui.mjs) -->
-        <div class="bridge-switch" role="group" aria-label="Bridge being edited">
-          <button id="bridge-a" type="button" aria-pressed="true"><b>A</b><span>Bridge A</span></button>
-          <button id="bridge-b" type="button" aria-pressed="false" class="add"><b>B</b><span>Add bridge B</span></button>
-        </div>
-        <details id="twin-box" class="twin-box" open hidden>
-          <summary>Position of bridge B <small>drag B on the plan</small></summary>
-          <canvas id="twin-pad" class="twin-pad" width="320" height="190" aria-label="Plan of the two bridges. Drag bridge B to move it; drag its round handle to turn it. The fields below hold the same values."></canvas>
-          <p id="twin-check" class="twin-check" role="status" aria-live="polite"></p>
-          <div class="twin-fields">
-            <label>Gap between decks · m<input id="twin-gap" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></label>
-            <label>Shift along A · m<input id="twin-shift" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></label>
-            <label>Turn · °<input id="twin-turn" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></label>
-          </div>
-          <div class="twin-actions">
-            <button id="twin-side" type="button" title="Put bridge B on the other side of bridge A"></button>
-            <button id="twin-align" type="button" title="Parallel to bridge A, no shift, 3 m between the decks">Parallel, 3 m apart</button>
-            <button id="twin-recopy" type="button" title="Make bridge B an exact copy of bridge A again (its position is kept)">Copy A again</button>
-            <button id="twin-remove" type="button" class="danger">Remove bridge B</button>
-          </div>
-          <p id="twin-editing" class="hint"></p>
-        </details>
         <label class="variant-label"
           >Variant name<input
             id="variantName"
@@ -157,14 +135,23 @@
             ><span>Import DTM/DSM</span>
           </button>
         </div>
-        <!-- 0.7.0: the satellite image of an imported terrain can be taken off (grass ground) and put back -->
-        <label id="dem-image-row" class="dem-image-row" hidden><input id="dem-image" type="checkbox" checked /><span>Satellite image on the terrain</span></label>
+        <!-- 0.8.0: ground imagery of an imported terrain: grass or one of the images QuickerAtlas sent, switched on the fly -->
+        <div id="dem-imagery" class="dem-imagery" hidden>
+          <div class="dem-imagery-head"><span>Ground imagery</span><small id="dem-imagery-note"></small></div>
+          <div id="dem-imagery-list" class="dem-imagery-list" role="radiogroup" aria-label="Ground imagery"></div>
+        </div>
         <div id="restore-bar" hidden>
           <div class="rb-text"><b>Unsaved model found</b><small id="restore-info"></small></div>
           <div class="rb-actions">
             <button id="restore-dismiss" class="text-button" type="button">Dismiss</button
             ><button id="restore-apply" class="primary" type="button">Restore</button>
           </div>
+        </div>
+        <!-- 0.8.0: up to four bridges (modules/twin-ui.mjs): the bridge edited by the whole panel, just above its tabs -->
+        <div id="bridge-bar" class="bridge-bar">
+          <div id="bridge-chips" class="bridge-chips" role="radiogroup" aria-label="Bridge being edited"></div>
+          <button id="bridge-add" type="button" class="bridge-add">+ Bridge</button
+          ><button id="bridge-arrange" type="button" class="bridge-arrange" title="Bridges on the site: place them on a top view, copy parameters between them" hidden><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h7M3 12h11M3 18h5"/><path d="m17 4 4 4-4 4"/><path d="M21 8h-6"/></svg>Arrange</button>
         </div>
         <!-- 0.6.4: segmented tabs with an icon each (QuickerAtlas view tabs) -->
         <div class="input-tabs" role="tablist" aria-label="Parameter categories">
@@ -880,14 +867,12 @@
                     <option value="rural">Rural · vegetation</option>
                     <option value="none">Open landscape</option>
                   </select></label
-                ><div class="field-grid">
-                  <label>Scenery seed<input name="seed" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="0" max="99999" step="1" /></label
-                  ><label>Forest density · ×<input name="forestDensity" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="0.25" max="3" step="0.25" /></label>
-                </div>
+                ><label>Forest density · ×<input name="forestDensity" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-num min="0.25" max="3" step="0.25" /></label>
+                <label class="check"><input name="groundGrass" type="checkbox" />Grass tufts on the ground</label>
                 <p class="hint">
                   Trees stay outside the bridge corridor and the area between crossing roads or railways.
-                  Change the seed for another layout. Forest density: 0.25 (sparse) to 3 (dense), 1 by default; on an
-                  imported site each forest zone has its own density.
+                  Forest density: 0.25 (sparse) to 3 (dense), 1 by default; on an imported site each forest zone has
+                  its own density. Turn the grass tufts off over an aerial image.
                 </p>
               </div>
             </details>
@@ -916,9 +901,16 @@
                     <option value="stylised">Stylised gradient</option>
                     <option value="physical">Preetham · analytic daylight</option>
                   </select></label
+                ><label
+                  >Morning mist<select name="mist">
+                    <option value="none">None</option>
+                    <option value="valley">In the valley · low ground</option>
+                    <option value="water">Over the water</option>
+                  </select></label
                 >
                 <p class="hint">
                   Atmosphere computes Rayleigh, Mie and ozone scattering, with a real twilight. Rain and snow add a light fog.
+                  The mist is densest at dawn (around 7 h) and stays thin the rest of the day.
                   Weather and birds are in the view menu, top right.
                 </p>
               </div>
@@ -1142,6 +1134,51 @@
         </div>
       </form>
     </dialog>
+    <!-- 0.8.0: « Bridges on the site »: place up to four bridges on a top view, copy parameters; applied at once -->
+    <dialog id="bridges-dialog" aria-labelledby="bridgesTitle">
+      <form method="dialog">
+        <button class="close-dialog" aria-label="Close" value="close">×</button>
+        <h2 id="bridgesTitle">Bridges on the site</h2>
+        <p>Place up to four independent bridges and copy parameters from one to another. The 3D view is rebuilt once, when you apply.</p>
+        <div class="br-layout">
+          <div class="br-stage">
+            <canvas id="br-map" aria-label="Top view of the site. Drag a bridge to move it, its round handle to turn it; drag the ground to pan, wheel to zoom."></canvas>
+            <p class="dem-tips">Drag a <b>bridge</b> to move it · round handle to turn it · drag the ground to pan · wheel to zoom</p>
+          </div>
+          <div class="br-side">
+            <ul id="br-list" class="br-list" aria-label="Bridges"></ul>
+            <button id="br-add" type="button" class="br-add">+ Add a bridge</button>
+            <section class="br-sec">
+              <h3>Position of <span id="br-place-role"></span> <small>in the frame of bridge A</small></h3>
+              <div class="br-fields">
+                <label>Along A · m<input id="br-shift" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></label>
+                <label>Right of A · m<input id="br-spacing" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></label>
+                <label>Turn · °<input id="br-turn" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></label>
+              </div>
+              <p id="br-check" class="twin-check" role="status" aria-live="polite"></p>
+              <div class="br-actions"><button id="br-parallel" type="button">Beside A, 3 m apart</button><button id="br-flip" type="button">Other side of A</button></div>
+            </section>
+            <section class="br-sec">
+              <h3>Copy parameters</h3>
+              <div class="br-copy">
+                <label>From<select id="br-from"></select></label><span aria-hidden="true">→</span><label>To<select id="br-to"></select></label>
+              </div>
+              <div class="br-groups" role="group" aria-label="Parameters to copy">
+                <label><input type="checkbox" name="br-group" value="model" />Spans and alignment</label>
+                <label><input type="checkbox" name="br-group" value="deck" checked />Deck</label>
+                <label><input type="checkbox" name="br-group" value="structure" checked />Structure</label>
+                <label><input type="checkbox" name="br-group" value="supports" checked />Supports</label>
+              </div>
+              <button id="br-copy" type="button">Copy</button>
+            </section>
+            <p id="br-status" class="hint" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button value="close">Cancel</button><button id="br-apply" class="primary" type="button">Apply</button>
+        </div>
+      </form>
+    </dialog>
     <!-- 0.6.8: import of a DTM / DSM block prepared in QuickerAtlas (bs3d-terrain packet) -->
     <dialog id="dem-dialog" aria-labelledby="demTitle">
       <form method="dialog">
@@ -1163,6 +1200,14 @@
               <canvas id="dem-map" width="640" height="640" aria-label="Terrain map. Drag the bridge to move it and its round handle to turn it. Click a zone to select it, drag it to move it."></canvas>
               <div id="dem-readout" class="dem-readout"></div>
               <p class="dem-tips">Drag the <b>bridge</b> to move it · round handle to turn it · wheel to zoom · drag the ground to pan</p>
+              <!-- 0.8.0: the zone tool bar of QuickerAtlas, on the map -->
+              <div id="dem-zone-bar" class="zone-bar" role="toolbar" aria-label="Zone tools">
+                <button id="dem-zone-frame" type="button" aria-pressed="false" title="Drag on the map to frame several zones (or Shift + drag)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="1"/></svg>Frame select</button
+                ><button id="dem-zone-all" type="button" title="Select all the zones (Ctrl + A)">All</button
+                ><span class="zone-sep" aria-hidden="true"></span
+                ><button id="dem-zone-delete-bar" type="button" class="danger" disabled title="Delete the selection (Delete key)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg><span>Delete</span></button
+                ><button id="dem-zone-undo" type="button" disabled title="Undo the last change (Ctrl + Z)"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5 3 10l5 5M3 10h11a6 6 0 0 1 0 12h-3"/></svg>Undo</button>
+              </div>
             </div>
             <canvas id="dem-profile" width="640" height="110" aria-label="Ground profile along the bridge"></canvas>
             <p id="dem-conflict" class="dem-status error" role="status" hidden></p>
@@ -1193,8 +1238,16 @@
             </details>
             <details class="dem-section" open>
               <summary><b>3</b> Site zones <small id="dem-zone-count"></small></summary>
-              <p id="dem-zone-help" class="hint" role="status"></p>
-              <div id="dem-zone-props" class="dem-fields" hidden>
+              <!-- 0.8.0: same layout as QuickerAtlas: one line per type (draw, select all, clear), then the selection -->
+              <ul id="dem-zone-fams" class="zone-fams" aria-label="Zones by type"></ul>
+              <div id="dem-zone-drawing" class="zone-tool" hidden>
+                <b id="dem-zone-drawing-title"></b>
+                <p id="dem-zone-drawing-help"></p>
+                <div class="dem-tools"><button id="dem-zone-finish" type="button" class="primary" disabled>Finish</button><button id="dem-zone-cancel" type="button">Cancel</button></div>
+              </div>
+              <div id="dem-zone-sel" class="zone-sel" hidden>
+                <div class="zone-sel-head"><b id="dem-zone-sel-title"></b><small id="dem-zone-sel-info"></small></div>
+              <div id="dem-zone-props" class="dem-fields">
                 <label>Type<select id="dem-zone-type"><option value="" disabled>(several)</option><option value="water">Lake / pond</option><option value="river">River</option><option value="forest">Forest</option><option value="grass">Grass / open ground</option></select></label>
                 <label>Road width · m<input id="dem-zone-width" type="number" min="3" max="40" step="0.5" /></label>
                 <!-- 0.7.1: per road: lanes, traffic, guardrails, continuation of the bridge approach -->
@@ -1207,9 +1260,10 @@
                 <label class="wide">Density<span class="dem-density"><input id="dem-zone-density" type="range" min="0.25" max="3" step="0.25" value="1" /><output id="dem-zone-density-out">1 ×</output></span></label>
                 <label>Water level · m<input id="dem-zone-level" type="number" step="0.05" placeholder="estimated" /></label>
               </div>
-              <div class="dem-tools"><button id="dem-zone-delete" type="button" class="danger" disabled>Delete</button><button id="dem-zone-undo" type="button" disabled>Undo</button></div>
-              <div id="dem-zone-draw" class="dem-tools"><span>Draw</span><button type="button" data-draw="river">River</button><button type="button" data-draw="water">Lake</button><button type="button" data-draw="forest">Forest</button><button type="button" data-draw="grass">Grass</button><button type="button" data-draw="road">Road</button></div>
-              <div id="dem-zone-drawing" class="dem-tools" hidden><button id="dem-zone-finish" type="button" class="primary" disabled>Finish</button><button id="dem-zone-cancel" type="button">Cancel</button></div>
+                <div class="dem-tools"><button id="dem-zone-delete" type="button" class="danger" disabled>Delete</button><button id="dem-zone-none" type="button">Deselect</button></div>
+                <small id="dem-zone-vertex-hint" class="hint">Vertices: drag one to move it, click a small dot to add one, double-click one to remove it.</small>
+              </div>
+              <p id="dem-zone-help" class="hint" role="status"></p>
               <button id="dem-save-terrain" type="button" class="text-button">Download this site (.bs3dterrain)</button>
             </details>
             <p class="hint" id="dem-info"></p>
@@ -1241,6 +1295,15 @@
           Starfield and grass species adapted from CK42BB/procedural-stars-threejs and procedural-grass-threejs (MIT);
           atmosphere after Hillaire 2020 (sebh/UnrealEngineSkyAtmosphere, MIT) and Bruneton 2008 (BSD); Preetham sky
           after Tw1ddle/Sky-Shader and the three.js Sky object (MIT); river details after Noniv/web-ocean (MIT).
+        </p>
+        <h3>Version 0.8.0</h3>
+        <p>
+          Up to four independent bridges: a bar just above the parameter tabs switches between them, and « Arrange »
+          opens a top view of the site to place them (applied at once) and copy parameters from one to another; the
+          exports are those of the bridge being edited. Ground imagery picker for an imported site (grass or any image
+          sent by QuickerAtlas), zone editing laid out like QuickerAtlas, grass tufts that can be turned off, an optional
+          morning mist, rolling wheels. Fixed: a site road drawn under a bridge is no longer cut, road embankments have
+          the grass of the bridge embankments, the slope in front of an abutment follows the ground.
         </p>
         <h3>Version 0.7.3</h3>
         <p>

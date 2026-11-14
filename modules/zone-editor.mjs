@@ -6,6 +6,21 @@
 import { serializePacket, gridBounds } from './terrain-packet.mjs';
 
 export const zoneNames = { water: 'Lake / pond', river: 'River', forest: 'Forest', grass: 'Grass', road: 'Road' };
+// 0.8.0: the zone types of QuickerAtlas (same colours, outlines and order), drawn on the map and in the type list.
+export const ZONE_TYPES = {
+  river: { many: 'Rivers', color: '#0072B2', dash: [], fill: 0.34 },
+  water: { many: 'Lakes / ponds', color: '#56B4E9', dash: [7, 4], fill: 0.34 },
+  forest: { many: 'Forests', color: '#009E73', dash: [2, 5], fill: 0.3 },
+  grass: { many: 'Grass', color: '#F0E442', dash: [8, 3, 2, 3], fill: 0.25 },
+  road: { many: 'Roads', color: '#E69F00', dash: [], fill: 0 },
+};
+const swatch = type => {
+  const t = ZONE_TYPES[type];
+  return type === 'road'
+    ? `<svg viewBox="0 0 22 14" width="22" height="14" aria-hidden="true"><path d="M1 11 11 3 21 9" stroke="${t.color}" stroke-width="4" fill="none" stroke-linecap="round"/></svg>`
+    : `<svg viewBox="0 0 22 14" width="22" height="14" aria-hidden="true"><rect x="2" y="2" width="18" height="10" rx="2" fill="${t.color}" fill-opacity="${t.fill + 0.2}" stroke="${t.color}" stroke-width="2"${t.dash.length ? ` stroke-dasharray="${t.dash.join(' ')}"` : ''}/></svg>`;
+};
+const lengthOf = pts => pts.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]), 0);
 export function validZonePoints(points, road = false) {
   if (points.length < (road ? 2 : 3) || points.some(p => p.some(v => !Number.isFinite(v)))) return false;
   if (road) return points.slice(1).some((p, i) => Math.hypot(p[0] - points[i][0], p[1] - points[i][1]) > 0.1);
@@ -35,6 +50,7 @@ const areaOf = pts => {
 export function createZoneEditor({ $, packet, redraw, toCanvas, ratio, scale }) {
   let selected = new Set(), // zone objects
     drawing = null,
+    frameMode = false, // 0.8.0: « Frame select » on the map tool bar: a plain drag frames zones
     action = null, // { kind: 'vertex' | 'zones' | 'frame', … }
     history = [];
   const zones = () => packet()?.zones ?? [];
@@ -49,7 +65,21 @@ export function createZoneEditor({ $, packet, redraw, toCanvas, ratio, scale }) 
     const b = gridBounds(packet());
     return [Math.max(b.x0, Math.min(b.x1, p[0])), Math.max(b.y0, Math.min(b.y1, p[1]))];
   };
-  const idle = 'Click a zone to select it (Shift adds, Shift + drag frames several). Drag to move, Delete to remove, Ctrl + Z to undo.';
+  const idle = 'Click a zone to select it, Shift + click to add one. Shift + drag (or « Frame select ») frames several. Drag a selection to move it; Delete removes it; Ctrl + Z undoes.';
+  const fmt = v => Math.round(v).toLocaleString('en-CA');
+  // Midpoints of the edges of the selected zone: a click there adds a vertex (QuickerAtlas).
+  const midpoints = z => {
+    const pts = ptsOf(z),
+      n = z.line ? pts.length - 1 : pts.length;
+    return Array.from({ length: n }, (_, k) => ({ k, p: [(pts[k][0] + pts[(k + 1) % pts.length][0]) / 2, (pts[k][1] + pts[(k + 1) % pts.length][1]) / 2] }));
+  };
+  function startDrawing(type) {
+    if (!packet()) return;
+    drawing = { type, points: [] };
+    selected = new Set();
+    message('');
+    refresh();
+  }
 
   function refresh() {
     const p = packet();
@@ -60,7 +90,35 @@ export function createZoneEditor({ $, packet, redraw, toCanvas, ratio, scale }) 
       roads = sel.filter(z => z.line),
       z = one();
     $('dem-zone-count').textContent = n ? `${n} zone${n > 1 ? 's' : ''} selected` : `${p.zones.length} zone${p.zones.length === 1 ? '' : 's'} on the site`;
-    $('dem-zone-props').hidden = !n || !!drawing;
+    // 0.8.0: one line per type, as in QuickerAtlas: select all of a type, draw one, clear the type.
+    $('dem-zone-fams').innerHTML = Object.keys(ZONE_TYPES)
+      .map(k => {
+        const list = p.zones.filter(q => q.type === k),
+          on = list.length > 0 && list.every(q => selected.has(q)),
+          off = list.length ? '' : ' disabled';
+        return `<li class="${list.length ? '' : 'none'}">${swatch(k)}<button type="button" class="zone-famname" data-act="fam" data-t="${k}" aria-pressed="${on}"${off} title="Select all the zones of this type">${ZONE_TYPES[k].many}</button><b>${list.length}</b><button type="button" class="zone-add" data-act="add" data-t="${k}"${drawing ? ' disabled' : ''} title="Draw a ${zoneNames[k].toLowerCase()} on the map">+ Draw</button><button type="button" class="zone-clear" data-act="clear" data-t="${k}"${off || (drawing ? ' disabled' : '')} title="Delete every zone of this type" aria-label="Clear: ${ZONE_TYPES[k].many}">Clear</button></li>`;
+      })
+      .join('');
+    $('dem-zone-sel').hidden = !n || !!drawing;
+    // the idle hint gives way to the selection box; any other message (refused width, not enough points…) stays
+    $('dem-zone-help').hidden = (!!n || !!drawing) && ['', idle].includes($('dem-zone-help').textContent);
+    if (n) {
+      $('dem-zone-sel-title').textContent = n === 1 ? zoneNames[z.type] : `${n} zones selected`;
+      $('dem-zone-sel-info').textContent = z
+        ? `${z.polygon ? fmt(areaOf(z.polygon)) + ' m²' : fmt(lengthOf(z.line)) + ' m'} · ${ptsOf(z).length} vertices · ${z.source === 'user' ? 'edited by hand' : 'detected'}`
+        : '';
+      $('dem-zone-vertex-hint').hidden = !z;
+    }
+    $('dem-zone-drawing').hidden = !drawing;
+    if (drawing) {
+      const min = drawing.type === 'road' ? 2 : 3;
+      $('dem-zone-drawing-title').textContent = `Drawing: ${zoneNames[drawing.type]}`;
+      $('dem-zone-drawing-help').textContent = `Click its points on the map (${drawing.points.length} placed, ${min} at least). Double-click or « Finish » to end, Esc to cancel.`;
+    }
+    $('dem-zone-bar').hidden = !!drawing;
+    $('dem-zone-frame').setAttribute('aria-pressed', String(frameMode));
+    $('dem-zone-delete-bar').disabled = !n || !!drawing;
+    $('dem-zone-delete-bar').lastElementChild.textContent = n ? `Delete (${n})` : 'Delete';
     const type = $('dem-zone-type'),
       width = $('dem-zone-width'),
       level = $('dem-zone-level');
@@ -93,8 +151,6 @@ export function createZoneEditor({ $, packet, redraw, toCanvas, ratio, scale }) 
     $('dem-zone-delete').disabled = !n || !!drawing;
     $('dem-zone-delete').textContent = n > 1 ? `Delete ${n} zones` : 'Delete';
     $('dem-zone-undo').disabled = !history.length || !!drawing;
-    $('dem-zone-draw').hidden = !!drawing;
-    $('dem-zone-drawing').hidden = !drawing;
     if (drawing) $('dem-zone-finish').disabled = drawing.points.length < (drawing.type === 'road' ? 2 : 3);
     redraw();
   }
@@ -216,14 +272,29 @@ export function createZoneEditor({ $, packet, redraw, toCanvas, ratio, scale }) 
     z.source = 'user';
     refresh();
   };
-  $('dem-zone-draw').onclick = e => {
-    const type = e.target.closest('[data-draw]')?.dataset.draw;
-    if (!type || !packet()) return;
-    drawing = { type, points: [] };
-    selected = new Set();
-    message(`Drawing a ${zoneNames[type].toLowerCase()}: click its points on the map. Double-click or Enter to finish, Esc to cancel.`);
+  $('dem-zone-fams').onclick = e => {
+    const b = e.target.closest('[data-act]');
+    if (!b || b.disabled || !packet()) return;
+    const type = b.dataset.t,
+      list = zones().filter(z => z.type === type);
+    if (b.dataset.act === 'add') startDrawing(type);
+    else if (b.dataset.act === 'fam') select(list.every(z => selected.has(z)) ? [] : list);
+    else if (b.dataset.act === 'clear' && list.length && !drawing) {
+      remember();
+      packet().zones = zones().filter(z => z.type !== type);
+      selected = new Set();
+      message(`${list.length} ${list.length > 1 ? ZONE_TYPES[type].many.toLowerCase() : zoneNames[type].toLowerCase()} deleted. Ctrl + Z brings ${list.length > 1 ? 'them' : 'it'} back.`);
+      refresh();
+    }
+  };
+  $('dem-zone-frame').onclick = () => {
+    frameMode = !frameMode;
+    message(frameMode ? 'Drag on the map to frame the zones to select.' : idle);
     refresh();
   };
+  $('dem-zone-all').onclick = () => select(zones());
+  $('dem-zone-delete-bar').onclick = remove;
+  $('dem-zone-none').onclick = () => select([]);
   $('dem-zone-finish').onclick = finish;
   $('dem-zone-cancel').onclick = () => {
     drawing = null;
@@ -246,6 +317,7 @@ export function createZoneEditor({ $, packet, redraw, toCanvas, ratio, scale }) 
     reset() {
       selected = new Set();
       drawing = null;
+      frameMode = false;
       action = null;
       history = [];
       message(idle);
@@ -270,8 +342,17 @@ export function createZoneEditor({ $, packet, redraw, toCanvas, ratio, scale }) 
           action = { kind: 'vertex', zone: z, index: i, before: { zones: structuredClone(zones()), selected: [zones().indexOf(z)] }, moved: false };
           return true;
         }
+        // 0.8.0: a press on an edge midpoint adds a vertex there, already held for dragging (QuickerAtlas).
+        const mid = ptsOf(z).length <= 80 ? midpoints(z).find(m => Math.hypot(...toCanvas(...m.p).map((v, k) => v - [x, y][k])) < 7 * ratio()) : null;
+        if (mid) {
+          const before = { zones: structuredClone(zones()), selected: [zones().indexOf(z)] };
+          ptsOf(z).splice(mid.k + 1, 0, bounded(mid.p));
+          action = { kind: 'vertex', zone: z, index: mid.k + 1, before, moved: true };
+          redraw();
+          return true;
+        }
       }
-      if (e.shiftKey && !hit(p, 5 / scale())) {
+      if ((e.shiftKey || frameMode) && !(frameMode ? false : hit(p, 5 / scale()))) {
         action = { kind: 'frame', a: p, b: p, add: selected.size > 0 };
         return true;
       }
@@ -330,6 +411,10 @@ export function createZoneEditor({ $, packet, redraw, toCanvas, ratio, scale }) 
           y1 = Math.max(a.a[1], a.b[1]),
           inside = zones().filter(z => ptsOf(z).some(q => q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1));
         select(a.add ? [...selected, ...inside] : inside);
+        if (frameMode) {
+          frameMode = false;
+          refresh();
+        }
         return;
       }
       if (a.moved) {
@@ -433,6 +518,18 @@ export function createZoneEditor({ $, packet, redraw, toCanvas, ratio, scale }) 
         g.stroke();
         g.setLineDash([]);
       }
+      // 0.8.0: small dots on the edge midpoints of the selected zone (a click adds a vertex there).
+      if (z && !drawing && pts.length <= 80)
+        for (const { p } of midpoints(z)) {
+          const q = toCanvas(...p);
+          g.beginPath();
+          g.arc(...q, 3 * r, 0, Math.PI * 2);
+          g.fillStyle = 'rgba(255,255,255,0.75)';
+          g.fill();
+          g.lineWidth = 1 * r;
+          g.strokeStyle = '#102d41';
+          g.stroke();
+        }
       if (pts.length <= 80 || drawing)
         for (const p of pts) {
           const q = toCanvas(...p);

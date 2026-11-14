@@ -73,7 +73,7 @@ import { createDemImport, saveOverlay, loadOverlay, clearOverlay } from './dem-u
 import { siteSun } from './terrain-packet.mjs';
 import { roadFootprints, intersectsRoad, setActiveDem, setTwinZone, setGroundOverride, terrainSampler } from './terrain.mjs';
 import { setGroundPartner } from './dem.mjs';
-import { twinConfig, twinPlacement, twinToA, aToTwin, swapTwin, mainRole, mainPlacement, pairFromA } from './twin.mjs';
+import { ROLES, otherConfig, placementOf, twinPlacement, twinToA, aToTwin, switchTo, mainRole, mainPlacement, pairFromA } from './twin.mjs';
 import { createTwinPanel } from './twin-ui.mjs';
 import {
   isNum,
@@ -118,7 +118,7 @@ const lodPoint = new T.Vector3();
 // bridge B while B is being edited: mainDem() gives the same terrain with the placement of that bridge.
 let mainDemMemo = { overlay: null, twin: null, value: null };
 function mainDem(c = config) {
-  if (!demOverlay || c.twin?.role !== 'A') return demOverlay;
+  if (!demOverlay || mainRole(c) === 'A') return demOverlay;
   if (mainDemMemo.overlay !== demOverlay || mainDemMemo.twin !== c.twin)
     mainDemMemo = { overlay: demOverlay, twin: c.twin, value: { ...demOverlay, placement: mainPlacement(demOverlay.placement, c) } };
   return mainDemMemo.value;
@@ -586,7 +586,7 @@ function updateGroupMeta() {
     'sup-slope': c.approachWalls === 'mse' ? 'n/a' : c.frontSlope ? 'Slope on' : 'Slope off',
     'site-cross': kinds,
     'site-terrain': `${label('terrainShape')} · ${label('terrainMode')}`,
-    'site-env': `${label('environment')} · seed ${c.seed}${c.environment === 'rural' && c.forestDensity !== 1 ? ` · forest × ${c.forestDensity}` : ''}`,
+    'site-env': `${label('environment')}${c.environment === 'rural' && c.forestDensity !== 1 ? ` · forest × ${c.forestDensity}` : ''}${c.groundGrass === false ? ' · no grass' : ''}`,
     'site-river': label('waterStyle'),
     'site-sky': `${label('skyMode')} · ${label('skyModel')}`,
   };
@@ -1174,78 +1174,80 @@ function update(raw, options = {}) {
   });
   return updateQueue;
 }
-// 0.7.0: two independent bridges (config.twin, see twin.mjs), with or without an imported terrain. The main configuration
-// stands at the scene origin; the twin is placed relative to it. Bridge A owns the site (crossings, terrain, vegetation):
-// it is the main configuration, or the twin while bridge B is being edited. The other bridge is built first, without a
-// site: its footprint keeps the site's roads, trees and grass off its deck and approaches, and it stands on the same ground.
+// 0.7.0: several independent bridges (config.twin, see twin.mjs; 0.8.0: up to four), with or without an imported
+// terrain. The main configuration stands at the scene origin; the others are placed relative to it. Bridge A owns the
+// site (crossings, terrain, vegetation): it is the main configuration, or one of the others while another bridge is
+// being edited. The other bridges are built first, without a site: their footprints keep the site's roads, trees and
+// grass off their decks and approaches, and they stand on the same ground.
 function buildPair(next) {
-  const t = next.twin;
   setTwinZone(null);
-  if (!t) return buildBridge(next, materials, { dem: demOverlay });
+  if (!next.twin) return buildBridge(next, materials, { dem: demOverlay });
   const dm = mainDem(next),
-    other = twinConfig(next),
-    mainOwns = t.role !== 'A',
-    toTwin = (x, z) => aToTwin(t, x, z),
-    toMain = (x, z) => twinToA(t, x, z),
-    demTwin = dm ? { ...dm, placement: twinPlacement(dm.placement, t) } : null,
-    siteCfg = mainOwns ? next : other,
-    guestCfg = mainOwns ? other : next,
-    siteDem = mainOwns ? dm : demTwin,
-    guestDem = mainOwns ? demTwin : dm,
-    siteToGuest = mainOwns ? toTwin : toMain,
-    guestToSite = mainOwns ? toMain : toTwin;
-  if (dm) {
-    setGroundPartner(siteCfg, { c: guestCfg, dem: guestDem, to: siteToGuest });
-    setGroundPartner(guestCfg, { c: siteCfg, dem: siteDem, to: guestToSite });
-  } else {
-    let siteGround = null;
-    setGroundOverride(guestCfg, (x, z) => {
-      const [u, v] = guestToSite(x, z);
-      return (siteGround ??= terrainSampler(siteCfg))(u, v);
-    });
+    all = [
+      { role: mainRole(next), c: next, p: null },
+      ...next.twin.others.map(o => ({ role: o.role, c: otherConfig(next, o.role), p: placementOf(next, o.role) })),
+    ];
+  for (const b of all) {
+    b.toLocal = b.p ? (x, z) => aToTwin(b.p, x, z) : (x, z) => [x, z]; // main frame -> this bridge's frame
+    b.toMain = b.p ? (x, z) => twinToA(b.p, x, z) : (x, z) => [x, z];
+    b.dem = dm && b.p ? { ...dm, placement: twinPlacement(dm.placement, b.p) } : dm;
   }
-  let guest = null,
-    site;
+  const site = all.find(b => b.role === 'A') ?? all[0],
+    guests = all.filter(b => b !== site),
+    between = (from, to) => (x, z) => to.toLocal(...from.toMain(x, z));
+  if (dm) for (const b of all) setGroundPartner(b.c, all.filter(o => o !== b).map(o => ({ c: o.c, dem: o.dem, to: between(b, o) })));
+  else {
+    let siteGround = null;
+    for (const g of guests) {
+      const toSite = between(g, site);
+      setGroundOverride(g.c, (x, z) => (siteGround ??= terrainSampler(site.c))(...toSite(x, z)));
+    }
+  }
+  const zones = [];
   try {
-    guest = buildBridge(guestCfg, materials, { site: false, lights: true, fills: true, dem: guestDem, variant: 1 }); // 0.7.1: B has its own traffic
-    const zones = roadFootprints(guestCfg);
-    setTwinZone((x, z, margin = 0) => {
-      const [u, v] = siteToGuest(x, z);
-      return intersectsRoad(zones, u, v, margin);
-    });
-    site = buildBridge(siteCfg, materials, { dem: siteDem });
+    for (const g of guests) {
+      // 0.7.1: each bridge has its own traffic (variant = its letter)
+      g.model = buildBridge(g.c, materials, { site: false, lights: true, fills: true, dem: g.dem, variant: ROLES.indexOf(g.role) });
+      zones.push({ zones: roadFootprints(g.c), to: between(site, g) });
+    }
+    setTwinZone((x, z, margin = 0) =>
+      zones.some(({ zones: list, to }) => {
+        const [u, v] = to(x, z);
+        return intersectsRoad(list, u, v, margin);
+      }),
+    );
+    site.model = buildBridge(site.c, materials, { dem: site.dem });
   } catch (e) {
-    if (guest) disposeModel(guest);
+    for (const g of guests) if (g.model) disposeModel(g.model);
     setTwinZone(null);
     setActiveDem(dm);
     throw e;
   }
   setActiveDem(dm);
-  const main = mainOwns ? site : guest,
-    twin = mainOwns ? guest : site,
-    root = new T.Group();
-  main.root.name = `Bridge ${mainOwns ? 'A' : 'B'}`;
-  twin.root.name = `Bridge ${t.role}`;
-  twin.root.position.set(t.shift, 0, t.spacing);
-  twin.root.rotation.y = (-t.turn * Math.PI) / 180;
-  root.add(main.root, twin.root);
+  const root = new T.Group();
+  for (const b of all) {
+    b.model.root.name = `Bridge ${b.role}`;
+    if (b.p) {
+      b.model.root.position.set(b.p.shift, 0, b.p.spacing);
+      b.model.root.rotation.y = (-b.p.turn * Math.PI) / 180;
+    }
+    root.add(b.model.root);
+  }
   root.updateMatrixWorld(true);
-  const la = main.lighting,
-    lb = twin.lighting,
-    both = [la, lb].filter(Boolean);
+  const main = all[0].model,
+    lights = all.map(b => b.model.lighting).filter(Boolean);
   return {
     ...main,
     root,
-    setting: site.setting,
-    waters: site.waters,
-    imported: site.imported,
-    vehicles: [...main.vehicles, ...twin.vehicles],
-    lighting: both.length
-      ? { ...both[0], setOn: on => both.forEach(l => l.setOn(on)), setHidden: h => both.forEach(l => l.setHidden?.(h)), dispose: () => both.forEach(l => l.dispose()) }
+    setting: site.model.setting,
+    waters: site.model.waters,
+    imported: site.model.imported,
+    vehicles: all.flatMap(b => b.model.vehicles),
+    lighting: lights.length
+      ? { ...lights[0], setOn: on => lights.forEach(l => l.setOn(on)), setHidden: h => lights.forEach(l => l.setHidden?.(h)), dispose: () => lights.forEach(l => l.dispose()) }
       : null,
-    twin,
     // Scene frame -> frame of the site (tree level of detail works in the site's own coordinates).
-    toSite: mainOwns ? null : site.root.matrixWorld.clone().invert(),
+    toSite: site === all[0] ? null : site.model.root.matrixWorld.clone().invert(),
   };
 }
 function rebuild(raw, { resetCamera = false, refresh = false, noHistory = false, editKey = null, baseline = false } = {}) {
@@ -1259,8 +1261,9 @@ function rebuild(raw, { resetCamera = false, refresh = false, noHistory = false,
   }
   // 0.7.0: the scene frame follows the bridge being edited. When that bridge changes (switch, undo, redo), the camera is
   // moved by the same transform, so the view stays on the same place of the site.
-  if (config.twin && next.twin && mainRole(config) !== mainRole(next) && camera && controls) {
-    const t = config.twin;
+  const moved = config.twin && next.twin && mainRole(config) !== mainRole(next) ? placementOf(config, mainRole(next)) : null;
+  if (moved && camera && controls) {
+    const t = moved;
     for (const v of [camera.position, controls.target]) {
       const [x, z] = aToTwin(t, v.x, v.z);
       v.x = x;
@@ -1735,7 +1738,7 @@ async function boot() {
   try {
     const saved = await loadOverlay();
     if (saved && ['cx', 'cy', 'azimuth', 'zOffset'].every(k => Number.isFinite(saved.placement?.[k]))) {
-      demOverlay = { packet: saved.packet, placement: saved.placement, texture: await demTexture(saved.packet), showImage: demImageOn() };
+      demOverlay = await demOverlayOf(saved.packet, saved.placement);
       demImport.refreshButton();
       syncDemImage();
       $('save-project').disabled = false;
@@ -1843,6 +1846,12 @@ async function boot() {
       flowTime += dt;
       materials.water.userData.flowTime.value = flowTime;
     }
+    // 0.8.0: morning mist drifts with the water clock; denser at dawn, tinted by the haze of the moment.
+    const mist = model.mist === undefined ? (model.mist = model.setting.getObjectByName('Mist')?.userData.mist ?? null) : model.mist;
+    if (mist) {
+      if (!flowing) flowTime += dt;
+      mist.update(flowTime, config.timeOfDay, scene.userData.daylight ?? 1, scene.fog.color);
+    }
     const cloudy = sky.mesh.visible && (config.skyMode === 'clouds' || config.weather === 'rain' || config.weather === 'snow');
     if (weather.active) weather.animate(dt, camera);
     if (ambient.mesh.visible && sky.mesh.visible) ambient.animate(time / 1000);
@@ -1851,7 +1860,7 @@ async function boot() {
     // Moving cloud shadows drift with the sky (materials.mjs); they follow the sun, not the shadow map.
     cloudShadow.time.value = skyTime;
     // Wind only moves the meadow while the scene is already animating, so a still view costs no frames.
-    const animated = flowing || moving || controls.autoRotate || cloudy || weather.active || config.timeFlow;
+    const animated = flowing || !!mist || moving || controls.autoRotate || cloudy || weather.active || config.timeFlow;
     if (animated) grassUniforms.grassTime.value += dt;
     // Flowing time: 15 minutes every 10 s by day, three times faster at night; the lighting
     // is re-applied twice a second and the sky lighting re-captured every 1.5 s, so the cost stays small.
@@ -2529,7 +2538,8 @@ $('exportIfc').onclick = async () => {
       localStorage.setItem('bridgesketch-ifc-schema', schema);
     } catch {}
     const { exportIfc } = await import('./ifc-export.mjs');
-    copy = buildBridge(config, materials, { batch: false, site: false, lights: true, dem: demOverlay });
+    // 0.8.0: the bridge being edited only, on the terrain with its own placement
+    copy = buildBridge(config, materials, { batch: false, site: false, lights: true, dem: mainDem() });
     const o = profileOptions(),
       result = exportIfc(config, copy, materials, {
         schema,
@@ -2563,10 +2573,14 @@ $('export-glb').onclick = async () => {
   let waterMaterial;
   try {
     const { GLTFExporter } = await import('../vendor/GLTFExporter.js');
-    const copy = model.root.clone(true);
-    copy.children[0].visible = true;
-    copy.children[1].children.find(o => o.name === 'Concrete deck haunches').visible = true;
-    copy.children[2].visible = true;
+    // 0.8.0: with several bridges, the bridge being edited only (at the origin of the scene; A carries the site).
+    const own = config.twin ? model.root.children.find(o => o.name === `Bridge ${mainRole(config)}`) : model.root,
+      copy = own.clone(true),
+      [deck, structure, setting] = copy.children;
+    deck.visible = true;
+    const haunches = structure.children.find(o => o.name === 'Concrete deck haunches');
+    if (haunches) haunches.visible = true;
+    if (setting) setting.visible = true;
     waterMaterial = new T.MeshStandardMaterial({ color: '#1f5059', roughness: 0.12 });
     const shadows = [];
     copy.traverse(o => {
@@ -2657,11 +2671,23 @@ function registerTools() {
 }
 // 0.6.8: imported terrain (« Import DTM/DSM » in the project bar). The packet comes from QuickerAtlas (postMessage or a
 // .bs3dterrain file, dem-ui.mjs); the overlay is kept apart from the config.
-async function demTexture(packet) {
-  if (!packet.image) return null;
+// 0.8.0: the images of an imported site: the one QuickerAtlas chose, then the alternatives it sent (packet.images).
+const demImages = packet => (packet?.image ? [packet.image, ...(packet.images ?? [])] : []);
+function imageLabel(img, i) {
+  if (img.label) return img.label;
+  const a = img.attribution || '',
+    year = a.match(/\b(19|20)\d\d\b/)?.[0],
+    cm = a.match(/(\d+)\s*cm/)?.[1];
+  if (/esri/i.test(a)) return 'Satellite Esri';
+  if (/ortho/i.test(a)) return `Orthophoto${year ? ' ' + year : ''}${cm ? ` · ${cm} cm` : ''}`;
+  return i ? `Image ${i + 1}` : 'Satellite image';
+}
+async function demTexture(packet, index = 0) {
+  const chosen = demImages(packet)[index];
+  if (!chosen) return null;
   try {
     const img = new Image();
-    img.src = packet.image.dataUrl;
+    img.src = chosen.dataUrl;
     await img.decode();
     let source = img;
     // 0.7.2: up to 8192 px (QuickerAtlas sends open orthophotos at their native 10 or 20 cm; a 600 m block at 10 cm is
@@ -2686,39 +2712,122 @@ async function demTexture(packet) {
     return null;
   }
 }
-// 0.7.0: satellite image on the imported terrain, on or off (a display choice kept in this browser).
-function demImageOn() {
+// 0.7.0: image on the imported terrain or not; 0.8.0: which image (index in demImages), -1 = grass. A display choice
+// kept in this browser ('off', or the index; the 0.7 value 'on' is the first image).
+function demImageChoice(packet) {
+  let v = null;
   try {
-    return localStorage.getItem('bs3d-dem-image') !== 'off';
-  } catch {
-    return true;
-  }
+    v = localStorage.getItem('bs3d-dem-image');
+  } catch {}
+  if (v === 'off') return -1;
+  const i = Number.parseInt(v, 10);
+  return Number.isInteger(i) && i >= 0 && i < demImages(packet).length ? i : 0;
 }
+async function demOverlayOf(packet, placement) {
+  const index = demImageChoice(packet),
+    texture = index >= 0 ? await demTexture(packet, index) : null;
+  return { packet, placement, texture, imageIndex: texture ? index : -1, showImage: !!texture };
+}
+// Small previews of the images (decoded once, at 160 px).
+const imageThumbs = new WeakMap();
+async function imageThumb(img) {
+  if (!imageThumbs.has(img))
+    imageThumbs.set(
+      img,
+      (async () => {
+        const bitmap = await createImageBitmap(await (await fetch(img.dataUrl)).blob(), { resizeWidth: 160, resizeQuality: 'medium' }),
+          canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        canvas.getContext('2d').drawImage(bitmap, 0, 0);
+        bitmap.close();
+        return canvas.toDataURL('image/jpeg', 0.8);
+      })().catch(() => ''),
+    );
+  return imageThumbs.get(img);
+}
+let imageryBusy = -2;
 function syncDemImage() {
-  $('dem-image-row').hidden = !demOverlay?.texture;
-  $('dem-image').checked = demOverlay?.showImage !== false;
+  const images = demImages(demOverlay?.packet),
+    current = demOverlay?.texture ? demOverlay.imageIndex : -1,
+    list = $('dem-imagery-list'),
+    focused = list.contains(document.activeElement);
+  $('dem-imagery').hidden = !images.length;
   // 0.7.3: credit of the image in the view while it is on the terrain (it was shown in the import dialog only).
-  const credit = demOverlay?.texture && demOverlay.showImage !== false ? demOverlay.packet.image?.attribution : '';
+  const credit = current >= 0 ? images[current]?.attribution : '';
   $('site-credit').hidden = !credit;
   $('site-credit').textContent = credit ? 'Imagery: ' + credit : '';
+  $('dem-imagery-note').textContent = current >= 0 ? imageLabel(images[current], current) : 'Grass of BridgeSketch 3D';
+  if (!images.length) return list.replaceChildren();
+  const option = (i, label, title) => {
+    const b = document.createElement('button'),
+      thumb = document.createElement('span'),
+      name = document.createElement('b');
+    b.type = 'button';
+    b.className = 'imagery-opt';
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(i === current));
+    b.tabIndex = i === current ? 0 : -1;
+    b.dataset.image = i;
+    b.title = title;
+    thumb.className = 'thumb' + (i < 0 ? ' grass' : imageryBusy === i ? ' busy' : '');
+    name.textContent = label;
+    b.append(thumb, name);
+    if (i >= 0 && imageryBusy !== i) imageThumb(images[i]).then(url => url && (thumb.style.backgroundImage = `url("${url}")`));
+    return b;
+  };
+  list.replaceChildren(
+    option(-1, 'Grass', 'No image: the grass of BridgeSketch 3D'),
+    ...images.map((img, i) => option(i, imageLabel(img, i), img.attribution || imageLabel(img, i))),
+  );
+  // the buttons are rebuilt: keyboard focus goes back to the chosen one (or the one loading)
+  if (focused) list.querySelector(`[data-image="${imageryBusy !== -2 ? imageryBusy : current}"]`)?.focus();
 }
-$('dem-image').addEventListener('change', async e => {
-  e.stopPropagation();
-  if (!demOverlay) return;
-  const on = e.target.checked;
-  try {
-    localStorage.setItem('bs3d-dem-image', on ? 'on' : 'off');
-  } catch {}
-  demOverlay = { ...demOverlay, showImage: on };
+async function chooseDemImage(index) {
+  if (!demOverlay || imageryBusy !== -2 || index === (demOverlay.texture ? demOverlay.imageIndex : -1)) return;
+  imageryBusy = index;
   syncDemImage();
-  await update(config, { noHistory: true });
-  notify(on ? 'Satellite image back on the terrain.' : 'Satellite image off: the ground is the grass of BridgeSketch 3D.');
+  try {
+    try {
+      localStorage.setItem('bs3d-dem-image', index < 0 ? 'off' : String(index));
+    } catch {}
+    const packet = demOverlay.packet,
+      texture = index >= 0 ? await demTexture(packet, index) : null;
+    // another terrain arrived while the image was decoded: it wins
+    if (demOverlay?.packet !== packet) return texture?.dispose();
+    const old = demOverlay.texture;
+    demOverlay = { ...demOverlay, texture, imageIndex: texture ? index : -1, showImage: !!texture };
+    try {
+      await update(config, { noHistory: true });
+    } finally {
+      old?.dispose();
+    }
+    const images = demImages(demOverlay.packet);
+    notify(texture ? `${imageLabel(images[index], index)} on the terrain.` : index >= 0 ? 'This image could not be read: grass instead.' : 'Image off: the ground is the grass of BridgeSketch 3D.');
+  } finally {
+    imageryBusy = -2;
+    syncDemImage();
+  }
+}
+$('dem-imagery-list').addEventListener('click', e => {
+  const b = e.target.closest('[data-image]');
+  if (b) chooseDemImage(Number(b.dataset.image));
+});
+$('dem-imagery-list').addEventListener('keydown', e => {
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+  const buttons = [...$('dem-imagery-list').querySelectorAll('[data-image]')],
+    k = buttons.indexOf(document.activeElement);
+  if (k < 0) return;
+  e.preventDefault();
+  const next = buttons[(k + (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1) + buttons.length) % buttons.length];
+  next.focus();
+  chooseDemImage(Number(next.dataset.image));
 });
 async function setDem(data) {
   const previous = demOverlay,
-    previousConfig = config,
-    texture = data ? await demTexture(data.packet) : null;
-  demOverlay = data ? { packet: data.packet, placement: data.placement, texture, showImage: demImageOn() } : null;
+    previousConfig = config;
+  demOverlay = data ? await demOverlayOf(data.packet, data.placement) : null;
+  const texture = demOverlay?.texture;
   try {
     await update(data?.config ?? config, { refresh: true, resetCamera: true, noHistory: true });
   } catch (e) {
@@ -2757,12 +2866,12 @@ const demImport = createDemImport({
   remove: removeDem,
   notify,
 });
-// 0.7.0: « Bridge A / Bridge B »: the same scene seen from the other bridge. The camera keeps looking at the same place.
+// 0.7.0: the same scene seen from another bridge (0.8.0: any of up to four). The camera keeps looking at the same place.
 async function switchBridge(role) {
   if (!config.twin || mainRole(config) === role) return;
-  await update(swapTwin(config), { refresh: true, editKey: 'bridge-switch' });
+  await update(switchTo(config, role), { refresh: true, editKey: 'bridge-switch' });
 }
-twinPanel = createTwinPanel({ $, getConfig: () => config, update, notify, switchBridge });
+twinPanel = createTwinPanel({ $, getConfig: () => config, getOverlay: () => demOverlay, update, notify, switchBridge });
 twinPanel.refresh();
 // QuickerAtlas can also open this page with #terrain-import and wait for { type: 'bs3d-ready' } before sending.
 const terrainHash = location.hash === '#terrain-import';

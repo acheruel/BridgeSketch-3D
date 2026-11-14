@@ -445,24 +445,29 @@ const groundCache = new WeakMap(),
   partners = new WeakMap();
 // 0.6.9: twin bridges. Each bridge's ground also carries the approach cuts of the other one, so the terrain built by
 // bridge A, B's footings and both sets of fills agree. partner = { c, dem, to: (x, z) -> [x, z] in the partner frame }.
+// 0.8.0: up to three partners (four bridges): a list, or one partner, or null.
 export function setGroundPartner(c, partner) {
-  if (partner) partners.set(c, partner);
+  const list = (Array.isArray(partner) ? partner : partner ? [partner] : []).filter(Boolean);
+  if (list.length) partners.set(c, list);
   else partners.delete(c);
 }
 export function demGround(c, dem) {
   // One sampler per (config object, terrain): terrainSampler(c) is asked for many times while a scene is built.
-  const partner = partners.get(c),
-    key = demKey(dem) + (partner ? '|' + demKey(partner.dem) : ''),
+  const list = partners.get(c) ?? [],
+    key = demKey(dem) + list.map(p => '|' + demKey(p.dem)).join(''),
     hit = groundCache.get(c);
   if (hit?.key === key) return hit.ground;
   const own = makeGround(c, dem),
-    other = partner ? makeGround(partner.c, partner.dem) : null,
-    ground = other
+    others = list.map(p => ({ to: p.to, ground: makeGround(p.c, p.dem) })),
+    ground = others.length
       ? (x, z) => {
-          const a = own(x, z),
-            [px, pz] = partner.to(x, z),
-            b = other(px, pz);
-          return b < a ? b : a;
+          let a = own(x, z);
+          for (const o of others) {
+            const [px, pz] = o.to(x, z),
+              b = o.ground(px, pz);
+            if (b < a) a = b;
+          }
+          return a;
         }
       : own;
   groundCache.set(c, { key, ground });
@@ -515,6 +520,10 @@ function makeGround(c, dem) {
     if ((bench || linkBench) && !(s > -1 && s < L + 1 && au < half + 4)) {
       if (bench) h = bench(x, z, h);
       if (linkBench) h = linkBench(x, z, h);
+    } else if (bench) {
+      // 0.8.0: under the deck, a site road well below the deck (a road passing under the bridge) keeps its bench.
+      const b = bench(x, z, h);
+      if (b < profile(c, clamp(s, 0, L)) - 3) h = b;
     }
     if (au > half + LAT) return h;
     const sup0 = support(0, u),
@@ -1040,7 +1049,7 @@ export function buildRoads(c, dem, ground, mats, parent, skip) {
         mesh.userData.traffic = road.traffic !== false;
         for (const side of [1, -1]) {
           const ring = run.map(([x, z, y, nx, nz]) => shoulderRing(ground, x + nx * half * side, y, z + nz * half * side, nx * side, nz * side)),
-            shoulder = new T.Mesh(stripGeometry(ring, 4), mats.shoulder);
+            shoulder = new T.Mesh(stripGeometry(ring, mats.shoulder.userData.textureMetres ?? 4), mats.shoulder);
           shoulder.name = 'Imported road shoulder';
           shoulder.receiveShadow = true;
           shoulder.userData.noBatch = true;
@@ -1070,7 +1079,7 @@ export function buildRoads(c, dem, ground, mats, parent, skip) {
         [ax, az] = pts[Math.max(0, i - 1)],
         [bx, bz] = pts[Math.min(pts.length - 1, i + 1)],
         len = Math.hypot(bx - ax, bz - az) || 1;
-      if (skip(x, z) || site.shore(x, z) > -2 || !site.inside(x, z, 1)) flush();
+      if (skip(x, z, strip.lev[i] + zo) || site.shore(x, z) > -2 || !site.inside(x, z, 1)) flush();
       else run.push([x, z, strip.lev[i] + zo, -(bz - az) / len, (bx - ax) / len]);
     }
     flush();
@@ -1213,7 +1222,7 @@ export function buildLinks(c, dem, ground, mats, parent, layout) {
             q = link.sample(d, side * (half + 1));
           return shoulderRing(ground, p.x, p.y, p.z, q.x - p.x, q.z - p.z);
         }),
-        shoulder = new T.Mesh(stripGeometry(ring, 4), mats.shoulder);
+        shoulder = new T.Mesh(stripGeometry(ring, mats.shoulder.userData.textureMetres ?? 4), mats.shoulder);
       shoulder.name = 'Approach road extension shoulder';
       shoulder.receiveShadow = true;
       shoulder.userData.noBatch = true;
