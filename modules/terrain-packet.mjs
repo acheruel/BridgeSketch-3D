@@ -8,7 +8,9 @@ import { frame, profile, totalLength } from './geometry.mjs';
 
 export const PACKET_TYPE = 'bs3d-terrain',
   PACKET_VERSION = 1,
-  MAX_CELLS = 1.5e6;
+  MAX_CELLS = 1.5e6,
+  // 0.8.1: QuickerAtlas keeps the 6 000 largest; a hand-made packet may hold a few more.
+  MAX_BUILDINGS = 8000;
 
 // Origins allowed to send a packet by postMessage (the contract): the published apps and local hosts.
 export const ALLOWED_ORIGINS = ['https://acheruel.github.io'];
@@ -137,6 +139,21 @@ export function validatePacket(p) {
         });
     }
   }
+  // 0.8.1: `buildings[]` (QA v0.7.8): 3D buildings from OpenFreeMap (OpenMapTiles heights), footprints in the packet frame:
+  // { polygon (counter-clockwise), holes?, height (m above the ground), minHeight? (m, a part that starts above the ground) }.
+  const buildings = [],
+    // a ring given closed (last point = first) is opened: the roof triangulation counts on distinct corners
+    openRing = r => (r.length > 3 && r[0][0] === r.at(-1)[0] && r[0][1] === r.at(-1)[1] ? r.slice(0, -1) : r).map(q => [q[0], q[1]]);
+  for (const b of Array.isArray(p.buildings) ? p.buildings : []) {
+    if (buildings.length >= MAX_BUILDINGS) break;
+    if (!b || !Array.isArray(b.polygon) || b.polygon.length < 3 || !b.polygon.every(pt)) continue;
+    const height = finite(b.height) && b.height > 0 ? Math.min(500, Math.max(2, b.height)) : 5,
+      minHeight = finite(b.minHeight) && b.minHeight > 0 && b.minHeight < height - 0.5 ? b.minHeight : 0,
+      holes = Array.isArray(b.holes) ? b.holes.filter(r => Array.isArray(r) && r.length >= 3 && r.every(pt)) : [];
+    const polygon = openRing(b.polygon);
+    if (polygon.length < 3) continue; // a closed triangle [a, b, a] is no footprint
+    buildings.push({ polygon, height, ...(minHeight ? { minHeight } : {}), ...(holes.length ? { holes: holes.map(openRing) } : {}) });
+  }
   // 0.8.0: `label` (short name) and `images[]`, the other images QuickerAtlas sent (QA v0.7.7, « all the images »).
   const imageOf = i =>
     i && typeof i.dataUrl === 'string' && /^data:image\//.test(i.dataUrl)
@@ -159,6 +176,7 @@ export function validatePacket(p) {
     image,
     ...(images.length ? { images } : {}),
     zones,
+    ...(buildings.length ? { buildings } : {}),
     bridge: axis ? { axis, structure: p.bridge.structure ?? null } : null,
     attribution: Array.isArray(p.attribution) ? p.attribution.map(String) : [],
   };

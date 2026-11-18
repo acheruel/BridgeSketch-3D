@@ -12,7 +12,7 @@ import { buildMist } from './mist.mjs';
 import { addShrubs, addTrees } from './trees.mjs';
 import { effectiveQuality, renderSettings } from './quality.mjs';
 import { RAIL_BED } from './geometry.mjs';
-import { buildRoads, buildSkirt, buildTerrainGeometry, buildWater, demEarth, demFloor, demGround, demKey, demLinks, demSite, roadDistance, scatterForest } from './dem.mjs';
+import { buildBuildings, buildRoads, buildSkirt, buildTerrainGeometry, buildWater, demEarth, demFloor, demGround, demKey, demLinks, demSite, inBuilding, roadDistance, scatterForest } from './dem.mjs';
 
 // 0.6.8: imported terrain (DTM/DSM from QuickerAtlas) as a session overlay. Set by buildBridge from its `dem` option; while
 // set, terrainSampler returns the DTM with the bridge corridor carved out, and addEnvironment builds the imported site.
@@ -750,6 +750,20 @@ function importedTerrain(c, m, parent, dem, ground, footprints, earthwork) {
         count++;
       }
   });
+  // 0.8.1: 3D buildings from QuickerAtlas (OpenFreeMap), white for now; off the modelled bridge and its fills. Hidden by
+  // the "3D buildings" box of the site panel (dem.showBuildings: the mesh is kept, only its visibility changes).
+  const houses = buildBuildings(dem, (x, z) => intersectsRoad(footprints, x, z, 1) || !!twinZone?.(x, z, 1));
+  if (houses) {
+    // an off-white albedo: with pure white, the sun and the sky saturate roofs and walls alike (0.8.1)
+    const white = new T.MeshStandardMaterial({ color: '#d6d5cf', roughness: 0.95, metalness: 0 });
+    white.userData.ownedMaterial = true;
+    const mesh = new T.Mesh(houses, white);
+    mesh.name = 'Site buildings';
+    mesh.castShadow = mesh.receiveShadow = true;
+    mesh.userData.noBatch = true;
+    mesh.visible = dem.showBuildings !== false;
+    parent.add(mesh);
+  }
   parent.userData.demTriangles = built.triangles;
   return waters;
 }
@@ -1130,7 +1144,9 @@ export function addEnvironment(c, m, parent, fills) {
   const site = D ? demSite(D) : null,
     demOccupied = (x, z, margin) =>
       // 0.7.1: trees keep off the road bench as well (2.5 m from the pavement); grass may grow on the shoulders.
-      !!site && (site.shore(x, z) > -margin || roadDistance(D, x, z) < (margin > 1 ? Math.max(2.5, margin * 0.4) : margin * 0.4) || !site.inside(x, z, 1));
+      !!site && (site.shore(x, z) > -margin || roadDistance(D, x, z) < (margin > 1 ? Math.max(2.5, margin * 0.4) : margin * 0.4) || !site.inside(x, z, 1) ||
+        // 0.8.1: no tree through a roof (wooded streets: the LiDAR forest zones take the houses in)
+        inBuilding(D, x, z, margin));
   const occupied = (x, z, margin = 2) => {
     for (const o of obstacles) {
       const p = coordinates(o, x, z);

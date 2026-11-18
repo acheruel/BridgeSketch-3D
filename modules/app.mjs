@@ -2723,10 +2723,18 @@ function demImageChoice(packet) {
   const i = Number.parseInt(v, 10);
   return Number.isInteger(i) && i >= 0 && i < demImages(packet).length ? i : 0;
 }
+// 0.8.1: 3D buildings of the imported site shown or not, a display choice kept in this browser.
+function demBuildingsShown() {
+  try {
+    return localStorage.getItem('bs3d-dem-buildings') !== 'off';
+  } catch {
+    return true;
+  }
+}
 async function demOverlayOf(packet, placement) {
   const index = demImageChoice(packet),
     texture = index >= 0 ? await demTexture(packet, index) : null;
-  return { packet, placement, texture, imageIndex: texture ? index : -1, showImage: !!texture };
+  return { packet, placement, texture, imageIndex: texture ? index : -1, showImage: !!texture, showBuildings: demBuildingsShown() };
 }
 // Small previews of the images (decoded once, at 160 px).
 const imageThumbs = new WeakMap();
@@ -2752,11 +2760,18 @@ function syncDemImage() {
     current = demOverlay?.texture ? demOverlay.imageIndex : -1,
     list = $('dem-imagery-list'),
     focused = list.contains(document.activeElement);
-  $('dem-imagery').hidden = !images.length;
+  const buildings = demOverlay?.packet?.buildings?.length ?? 0;
+  $('dem-imagery').hidden = !images.length && !buildings;
+  $('dem-imagery-images').hidden = !images.length;
+  $('dem-buildings-row').hidden = !buildings;
+  $('dem-buildings').checked = demOverlay?.showBuildings !== false;
+  $('dem-buildings-note').textContent = buildings ? `${buildings} · OpenFreeMap` : '';
   // 0.7.3: credit of the image in the view while it is on the terrain (it was shown in the import dialog only).
-  const credit = current >= 0 ? images[current]?.attribution : '';
-  $('site-credit').hidden = !credit;
-  $('site-credit').textContent = credit ? 'Imagery: ' + credit : '';
+  const credit = current >= 0 ? images[current]?.attribution : '',
+    // 0.8.1: the buildings carry the OpenStreetMap credit while they are shown
+    houses = demOverlay?.packet?.buildings?.length && demOverlay.showBuildings !== false ? 'Buildings: OpenFreeMap © OpenMapTiles © OpenStreetMap contributors' : '';
+  $('site-credit').hidden = !credit && !houses;
+  $('site-credit').textContent = [credit ? 'Imagery: ' + credit : '', houses].filter(Boolean).join(' · ');
   $('dem-imagery-note').textContent = current >= 0 ? imageLabel(images[current], current) : 'Grass of BridgeSketch 3D';
   if (!images.length) return list.replaceChildren();
   const option = (i, label, title) => {
@@ -2809,6 +2824,21 @@ async function chooseDemImage(index) {
     syncDemImage();
   }
 }
+// 0.8.1: hiding the buildings only flips the mesh visibility (no rebuild); the choice holds for the next terrains.
+$('dem-buildings').addEventListener('change', e => {
+  e.stopPropagation();
+  const on = e.target.checked;
+  try {
+    localStorage.setItem('bs3d-dem-buildings', on ? 'on' : 'off');
+  } catch {}
+  if (!demOverlay) return;
+  demOverlay.showBuildings = on;
+  scene.traverse(o => o.name === 'Site buildings' && (o.visible = on));
+  needsRender = true;
+  syncDemImage();
+  notify(on ? '3D buildings shown (OpenFreeMap, white).' : '3D buildings hidden.');
+});
+$('dem-buildings').addEventListener('input', e => e.stopPropagation());
 $('dem-imagery-list').addEventListener('click', e => {
   const b = e.target.closest('[data-image]');
   if (b) chooseDemImage(Number(b.dataset.image));

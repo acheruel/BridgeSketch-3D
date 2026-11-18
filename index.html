@@ -136,9 +136,15 @@
           </button>
         </div>
         <!-- 0.8.0: ground imagery of an imported terrain: grass or one of the images QuickerAtlas sent, switched on the fly -->
+        <!-- 0.8.1: and the 3D buildings it sent (OpenFreeMap), shown or hidden -->
         <div id="dem-imagery" class="dem-imagery" hidden>
-          <div class="dem-imagery-head"><span>Ground imagery</span><small id="dem-imagery-note"></small></div>
-          <div id="dem-imagery-list" class="dem-imagery-list" role="radiogroup" aria-label="Ground imagery"></div>
+          <div id="dem-imagery-images">
+            <div class="dem-imagery-head"><span>Ground imagery</span><small id="dem-imagery-note"></small></div>
+            <div id="dem-imagery-list" class="dem-imagery-list" role="radiogroup" aria-label="Ground imagery"></div>
+          </div>
+          <label id="dem-buildings-row" class="check dem-buildings" hidden
+            ><input id="dem-buildings" type="checkbox" checked />3D buildings<small id="dem-buildings-note"></small
+          ></label>
         </div>
         <div id="restore-bar" hidden>
           <div class="rb-text"><b>Unsaved model found</b><small id="restore-info"></small></div>
@@ -1295,6 +1301,12 @@
           Starfield and grass species adapted from CK42BB/procedural-stars-threejs and procedural-grass-threejs (MIT);
           atmosphere after Hillaire 2020 (sebh/UnrealEngineSkyAtmosphere, MIT) and Bruneton 2008 (BSD); Preetham sky
           after Tw1ddle/Sky-Shader and the three.js Sky object (MIT); river details after Noniv/web-ocean (MIT).
+        </p>
+        <h3>Version 0.8.1</h3>
+        <p>
+          3D buildings around an imported site: QuickerAtlas reads the OpenFreeMap vector tiles of the block (building
+          footprints and heights from OpenStreetMap) and sends them with the terrain; they stand white on the measured
+          ground, off the modelled bridge, and the « 3D buildings » box of the site panel hides them.
         </p>
         <h3>Version 0.8.0</h3>
         <p>

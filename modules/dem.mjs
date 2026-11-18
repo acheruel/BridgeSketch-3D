@@ -1336,3 +1336,122 @@ export function roadDistance(dem, x, z) {
   }
   return best;
 }
+
+/* ---------------------------------------------------------------------------------------------- */
+/* 0.8.1: 3D buildings (OpenFreeMap footprints sent by QuickerAtlas v0.7.8)                         */
+/* ---------------------------------------------------------------------------------------------- */
+
+const ringArea = r => {
+  let s = 0;
+  for (let i = 0, n = r.length; i < n; i++) s += r[i][0] * r[(i + 1) % n][1] - r[(i + 1) % n][0] * r[i][1];
+  return s / 2;
+};
+const edgeDistance = (ring, x, y) => {
+  let best = Infinity;
+  for (let i = 0, n = ring.length; i < n; i++) {
+    const [ax, ay] = ring[i],
+      dx = ring[(i + 1) % n][0] - ax,
+      dy = ring[(i + 1) % n][1] - ay,
+      t = clamp(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1), 0, 1);
+    best = Math.min(best, Math.hypot(x - ax - t * dx, y - ay - t * dy));
+  }
+  return best;
+};
+
+// Is the scene point (x, z) inside a building footprint, or within `margin` m of its walls? 20 m hash of the boxes.
+export function inBuilding(dem, x, z, margin = 0) {
+  const site = demSite(dem),
+    list = site.packet.buildings;
+  if (!list?.length) return false;
+  if (!site.buildingIndex) {
+    const index = new Map();
+    list.forEach(b => {
+      const xs = b.polygon.map(p => p[0]),
+        ys = b.polygon.map(p => p[1]),
+        e = { b, box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] };
+      for (let cx = Math.floor((e.box[0] - 8) / 20); cx <= Math.floor((e.box[2] + 8) / 20); cx++)
+        for (let cy = Math.floor((e.box[1] - 8) / 20); cy <= Math.floor((e.box[3] + 8) / 20); cy++) {
+          const key = cx * 65536 + cy;
+          if (!index.has(key)) index.set(key, []);
+          index.get(key).push(e);
+        }
+    });
+    site.buildingIndex = index;
+  }
+  const [px, py] = sceneToPacket(site.pl, x, z),
+    m = Math.min(margin, 8);
+  for (const { b, box } of site.buildingIndex.get(Math.floor(px / 20) * 65536 + Math.floor(py / 20)) ?? []) {
+    if (px < box[0] - m || px > box[2] + m || py < box[1] - m || py > box[3] + m) continue;
+    if (insidePolygon(b.polygon, px, py) && !(b.holes ?? []).some(h => insidePolygon(h, px, py))) return true;
+    if (m > 0 && edgeDistance(b.polygon, px, py) < m) return true;
+  }
+  return false;
+}
+
+// White extruded blocks: flat roof at the mean ground height + height, walls down to the lowest ground under the
+// footprint (0.5 m into it, so a slope never shows a gap). The ground is the measured DTM without the water beds: a
+// building on a bank stops at the water line instead of hanging a wall down to the river bed (seen through the water).
+// `skip(x, z)` drops a building with a corner or its centre on the modelled bridge (deck, fills). Returns a non-indexed
+// geometry with flat normals.
+export function buildBuildings(dem, skip = () => false) {
+  const site = demSite(dem),
+    list = site.packet.buildings ?? [],
+    pos = [],
+    nor = [],
+    v2 = ring => ring.map(([px, py]) => new T.Vector2(px, py));
+  let kept = 0;
+  const tri = (a, b, c, n) => {
+    // winding from the wanted normal (the packet → scene transform may mirror)
+    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2],
+      cross = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+    if (cross[0] * n[0] + cross[1] * n[1] + cross[2] * n[2] < 0) [b, c] = [c, b];
+    pos.push(...a, ...b, ...c);
+    nor.push(...n, ...n, ...n);
+  };
+  for (const b of list) {
+    const outer = ringArea(b.polygon) < 0 ? [...b.polygon].reverse() : b.polygon,
+      holes = (b.holes ?? []).map(h => (ringArea(h) > 0 ? [...h].reverse() : h)),
+      scene = outer.map(([px, py]) => site.toScene(px, py)),
+      c = outer.reduce((s, p) => [s[0] + p[0] / outer.length, s[1] + p[1] / outer.length], [0, 0]),
+      sc = site.toScene(...c);
+    if (skip(...sc) || scene.some(p => skip(...p))) continue;
+    const gs = [...outer, c].map(([px, py]) => site.baseAt(px, py) + site.pl.zOffset).filter(Number.isFinite);
+    if (!gs.length) continue;
+    const mean = gs.reduce((a, v) => a + v, 0) / gs.length,
+      top = mean + b.height,
+      bottom = b.minHeight ? mean + b.minHeight : Math.min(...gs) - 0.5;
+    if (top < bottom + 1) continue;
+    kept++;
+    // roof: the footprint triangulated with its courtyards
+    const flat = [...outer, ...holes.flat()].map(([px, py]) => site.toScene(px, py));
+    for (const [i, j, k] of T.ShapeUtils.triangulateShape(v2(outer), holes.map(v2)))
+      tri([flat[i][0], top, flat[i][1]], [flat[j][0], top, flat[j][1]], [flat[k][0], top, flat[k][1]], [0, 1, 0]);
+    if (b.minHeight)
+      for (const [i, j, k] of T.ShapeUtils.triangulateShape(v2(outer), holes.map(v2)))
+        tri([flat[i][0], bottom, flat[i][1]], [flat[j][0], bottom, flat[j][1]], [flat[k][0], bottom, flat[k][1]], [0, -1, 0]);
+    // walls: outer ring counter-clockwise and holes clockwise, so the outside of the solid is always right of an edge
+    for (const ring of [outer, ...holes])
+      for (let i = 0, n = ring.length; i < n; i++) {
+        const [ax, ay] = ring[i],
+          [bx, by] = ring[(i + 1) % n],
+          len = Math.hypot(bx - ax, by - ay);
+        if (len < 0.05) continue;
+        const A = site.toScene(ax, ay),
+          Bp = site.toScene(bx, by),
+          O = site.toScene((ax + bx) / 2 + (by - ay) / len, (ay + by) / 2 - (bx - ax) / len),
+          mx = (A[0] + Bp[0]) / 2,
+          mz = (A[1] + Bp[1]) / 2,
+          nl = Math.hypot(O[0] - mx, O[1] - mz) || 1,
+          nn = [(O[0] - mx) / nl, 0, (O[1] - mz) / nl];
+        tri([A[0], bottom, A[1]], [Bp[0], bottom, Bp[1]], [Bp[0], top, Bp[1]], nn);
+        tri([A[0], bottom, A[1]], [Bp[0], top, Bp[1]], [A[0], top, A[1]], nn);
+      }
+  }
+  if (!pos.length) return null;
+  const geometry = new T.BufferGeometry();
+  geometry.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+  geometry.setAttribute('normal', new T.Float32BufferAttribute(nor, 3));
+  geometry.computeBoundingSphere();
+  geometry.userData.buildings = kept;
+  return geometry;
+}

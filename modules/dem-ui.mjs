@@ -267,6 +267,17 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
       g.stroke();
       g.setLineDash([]);
     }
+    // 0.8.1: 3D buildings (OpenFreeMap), white like in the 3D view
+    if (packet.buildings?.length) {
+      g.fillStyle = '#ffffff';
+      g.globalAlpha = 0.7;
+      for (const b of packet.buildings) {
+        path(b.polygon);
+        g.closePath();
+        g.fill();
+      }
+      g.globalAlpha = 1;
+    }
     const axis = packet.bridge?.axis;
     if (axis) {
       path(axis);
@@ -457,6 +468,7 @@ export function createDemImport({ $, getConfig, getOverlay, apply, remove, notif
     $('dem-info').textContent =
       `${packet.source || 'Terrain packet'} · ${packet.grid.cols} × ${packet.grid.rows} cells at ${packet.grid.cell} m · ` +
       `${zones.river + zones.water} water, ${zones.forest} forest, ${zones.grass} grass, ${zones.road} road zones · ` +
+      (packet.buildings?.length ? `${packet.buildings.length} 3D buildings · ` : '') +
       `${packet.image ? 'satellite image' : 'no image'}${packet.mns ? ' · surface model' : ''}` +
       (packet.attribution.length ? ' · ' + packet.attribution.join(' · ') : '');
     status(packet.bridge ? 'Block received. The bridge is on the axis drawn in QuickerAtlas: move it if needed.' : 'Block received. Place the bridge by dragging its footprint.');
